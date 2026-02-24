@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+
+  --bg: #F6F8FB;
+  --card: #FFFFFF;
+  --border: #E4E7EC;
+
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+
+  --primary: #1F7A63;
+  --primary-hover: #17624F;
+  --primary-soft: #E6F4EF;
+
+  --muted: #F1F5F9;
+  --ring: var(--primary);
+
+  /* Compatibility aliases */
+  --parchment: var(--bg);
+  --ink: var(--text-primary);
+  --palm: var(--primary);
+  --gold: #F59E0B;
+  --muted-foreground: var(--text-muted);
+  --parchment: var(--bg);
+  --ink: var(--text);
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  color: var(--text-secondary);
+  background: var(--bg);
+}
+
+.texture-overlay{
+  pointer-events:none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+a { @apply underline-offset-4; }
