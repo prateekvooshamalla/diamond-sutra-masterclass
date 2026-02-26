@@ -156,7 +156,7 @@ export default function AdminCourse({ params }: { params: { locale: Locale } }) 
   if (loading || !isAdmin) return null
 
   return (
-    <div className="space-y-6">
+    <main className="space-y-6">
       <PageHeader
         label="Admin"
         title="Course"
@@ -269,11 +269,17 @@ export default function AdminCourse({ params }: { params: { locale: Locale } }) 
                   />
                   <Input
                     value={recording.driveEmbedUrl}
+                    placeholder="Google Drive embed URL"
+                    onChange={(e) => updateRecording(index, "driveEmbedUrl", e.target.value)}
+                  />
+
               <Button variant="outline" onClick={addRecording}>
                 Add recording
               </Button>
                   <Button variant="outline" onClick={() => removeRecording(index)}>
                     Remove
+                  </Button>
+                  
 
           <div className="sticky bottom-0 z-10 border-t border-border bg-card px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -285,7 +291,7 @@ export default function AdminCourse({ params }: { params: { locale: Locale } }) 
           </div>
         </div>
       </div>
-              </div>
+             
             ))}
             <Button variant="secondary" onClick={addRecording}>
               Add recording

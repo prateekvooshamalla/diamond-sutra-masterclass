@@ -20,6 +20,7 @@ type Course = {
   classTimeEnd?: string
   timezone?: string
   instructorName?: string
+   schedule?: string 
 }
 
 type EnrollmentStatus = "not_enrolled" | "active"
@@ -43,7 +44,7 @@ export default function Dashboard({ params }: { params: { locale: Locale } }) {
       setPageLoading(true)
       setPageError(null)
       try {
-        const enrollmentSnap = await getDoc(doc(db, "enrollments", `${user.uid}_diamond-sutra`))
+        const enrollmentSnap = await getDoc(doc(db, "masterclass", "diamond-sutra", "users", user.uid))
         setStatus(
           enrollmentSnap.exists()
             ? ((enrollmentSnap.data() as any).status ?? "not_enrolled")
