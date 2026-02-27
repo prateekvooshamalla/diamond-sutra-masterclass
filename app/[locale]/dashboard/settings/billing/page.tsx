@@ -1,7 +1,13 @@
-import type { Locale } from "@/lib/i18n"
+import type { Locale } from "@/Services/i18n"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-export default function BillingSettings({ params }: { params: { locale: Locale } }) {
+export default async function BillingSettings({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  const { locale } = await params // ✅ unwrap (even if unused)
+
   return (
     <Card>
       <CardHeader>
@@ -9,7 +15,9 @@ export default function BillingSettings({ params }: { params: { locale: Locale }
         <CardDescription>Manage billing details and invoices.</CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-mutedForeground">Disabled — payments removed</p>
+        <p className="text-sm text-mutedForeground">
+          Disabled — payments removed
+        </p>
       </CardContent>
     </Card>
   )

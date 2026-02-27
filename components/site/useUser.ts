@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import { onAuthStateChanged, type User } from "firebase/auth"
-import { auth, db } from "@/lib/firebase"
+import { auth, db } from "@/Services/firebase"
 import { doc, getDoc } from "firebase/firestore"
 
 export type AppUser = {

@@ -1,7 +1,7 @@
 "use client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { cn } from "@/Services/utils"
 import { Separator } from "@/components/ui/separator"
 
 const sections = [

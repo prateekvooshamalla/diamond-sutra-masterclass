@@ -2,7 +2,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { cn } from "@/Services/utils"
 import { useUser } from "@/components/site/useUser"
 import { BookOpen, Home, Settings, Users, Video, LayoutGrid } from "lucide-react"
 

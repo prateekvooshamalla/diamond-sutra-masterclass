@@ -1,9 +1,11 @@
 "use client"
+
 import * as React from "react"
-import type { Locale } from "@/lib/i18n"
+import { use } from "react"
+import type { Locale } from "@/Services/i18n"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/components/site/useUser"
-import { db } from "@/lib/firebase"
+import { db } from "@/Services/firebase"
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -30,13 +32,17 @@ const languageOptions: { value: Locale; label: string }[] = [
   { value: "zh", label: "Chinese" },
 ]
 
-const timezoneOptions = ["Asia/Kolkata", "Asia/Singapore", "Europe/London", "America/New_York"]
+const timezoneOptions = [
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Europe/London",
+  "America/New_York",
+]
 
 function getInitials(name?: string | null) {
   if (!name) return "U"
   const parts = name.trim().split(/\s+/)
-  const initials = parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")
-  return initials || "U"
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "U"
 }
 
 function formatTimestamp(value: any) {
@@ -49,61 +55,78 @@ function formatTimestamp(value: any) {
   }).format(date)
 }
 
-export default function ProfileSettings({ params }: { params: { locale: Locale } }) {
+export default function ProfileSettings({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  const { locale } = use(params) // ✅ unwrap params
+
   const router = useRouter()
   const { user, profile, loading } = useUser()
+
   const [name, setName] = React.useState("")
   const [phone, setPhone] = React.useState("")
   const [email, setEmail] = React.useState("")
-  const [preferredLanguage, setPreferredLanguage] = React.useState<Locale>(params.locale)
+  const [preferredLanguage, setPreferredLanguage] =
+    React.useState<Locale>(locale)
   const [timezone, setTimezone] = React.useState("Asia/Kolkata")
   const [photoUrl, setPhotoUrl] = React.useState("")
   const [role, setRole] = React.useState<"admin" | "user">("user")
   const [createdAt, setCreatedAt] = React.useState<any>(null)
+
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!loading && !user) {
-      router.push(`/${params.locale}/auth`)
+      router.push(`/${locale}/auth`)
     }
-  }, [loading, user, router, params.locale])
+  }, [loading, user, router, locale])
 
   React.useEffect(() => {
     async function loadProfile() {
       if (!user) return
+
       const snap = await getDoc(doc(db, "users", user.uid))
       const data = (snap.exists() ? snap.data() : {}) as ProfileData
+
       setName(data.name ?? profile?.name ?? "")
       setPhone(data.phone ?? "")
       setEmail(user.email ?? data.email ?? "")
-      setPreferredLanguage(data.preferredLanguage ?? params.locale)
+      setPreferredLanguage(data.preferredLanguage ?? locale)
       setTimezone(data.timezone ?? "Asia/Kolkata")
       setPhotoUrl(data.photoUrl ?? "")
       setRole((data.role as "admin" | "user") ?? "user")
       setCreatedAt(data.createdAt ?? null)
     }
+
     loadProfile()
-  }, [user, profile?.name, params.locale])
+  }, [user, profile?.name, locale])
 
   async function saveProfile() {
     if (!user) return
+
     setError(null)
     setSaving(true)
     setMessage(null)
+
     const trimmedName = name.trim()
     const trimmedPhone = phone.trim()
+
     if (!trimmedName) {
       setSaving(false)
       setError("Name is required.")
       return
     }
+
     if (trimmedPhone.length < 7) {
       setSaving(false)
       setError("Phone number looks too short.")
       return
     }
+
     try {
       await setDoc(
         doc(db, "users", user.uid),
@@ -118,8 +141,10 @@ export default function ProfileSettings({ params }: { params: { locale: Locale }
         },
         { merge: true }
       )
+
       setMessage("Profile updated.")
-      if (preferredLanguage !== params.locale) {
+
+      if (preferredLanguage !== locale) {
         router.push(`/${preferredLanguage}/dashboard/settings/profile`)
       }
     } catch (e: any) {
@@ -136,8 +161,11 @@ export default function ProfileSettings({ params }: { params: { locale: Locale }
       <Card>
         <CardHeader>
           <CardTitle>Profile details</CardTitle>
-          <CardDescription>Update your contact and localization preferences.</CardDescription>
+          <CardDescription>
+            Update your contact and localization preferences.
+          </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-6">
           <div className="flex items-center gap-4">
             <Avatar className="h-14 w-14">
@@ -145,30 +173,37 @@ export default function ProfileSettings({ params }: { params: { locale: Locale }
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <div>
-              <p className="text-sm font-medium text-ink">Profile photo</p>
-              <p className="text-xs text-mutedForeground">Optional URL or initials placeholder.</p>
+              <p className="text-sm font-medium">Profile photo</p>
+              <p className="text-xs text-mutedForeground">
+                Optional URL or initials placeholder.
+              </p>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Full name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
+
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} required />
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
+
             <div className="space-y-2 md:col-span-2">
               <Label>Email</Label>
               <Input value={email} disabled />
             </div>
+
             <div className="space-y-2">
               <Label>Preferred language</Label>
               <select
                 className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
                 value={preferredLanguage}
-                onChange={(e) => setPreferredLanguage(e.target.value as Locale)}
+                onChange={(e) =>
+                  setPreferredLanguage(e.target.value as Locale)
+                }
               >
                 {languageOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -177,6 +212,7 @@ export default function ProfileSettings({ params }: { params: { locale: Locale }
                 ))}
               </select>
             </div>
+
             <div className="space-y-2">
               <Label>Timezone</Label>
               <select
@@ -191,18 +227,28 @@ export default function ProfileSettings({ params }: { params: { locale: Locale }
                 ))}
               </select>
             </div>
+
             <div className="space-y-2 md:col-span-2">
               <Label>Photo URL (optional)</Label>
-              <Input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} />
+              <Input
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+              />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-3">
             <Button onClick={saveProfile} disabled={saving}>
               {saving ? "Saving..." : "Save changes"}
             </Button>
-            {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
-            {error ? <p className="text-sm text-red-700">{error}</p> : null}
+
+            {message && (
+              <p className="text-sm text-emerald-700">{message}</p>
+            )}
+
+            {error && (
+              <p className="text-sm text-red-700">{error}</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -210,29 +256,41 @@ export default function ProfileSettings({ params }: { params: { locale: Locale }
       <Card>
         <CardHeader>
           <CardTitle>Account summary</CardTitle>
-          <CardDescription>Security and access snapshot.</CardDescription>
+          <CardDescription>
+            Security and access snapshot.
+          </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-3 text-sm text-mutedForeground">
-          <div className="flex items-center justify-between">
+          <div className="flex justify-between">
             <span>Name</span>
-            <span className="font-medium text-ink">{name || profile?.name || user?.displayName || "Student"}</span>
+            <span className="font-medium">
+              {name || profile?.name || user?.displayName || "Student"}
+            </span>
           </div>
-          <div className="flex items-center justify-between">
+
+          <div className="flex justify-between">
             <span>Email</span>
-            <span className="font-medium text-ink">{email || user?.email || "-"}</span>
+            <span className="font-medium">
+              {email || user?.email || "-"}
+            </span>
           </div>
-          {role === "admin" ? (
-            <div className="flex items-center justify-between">
+
+          {role === "admin" && (
+            <div className="flex justify-between">
               <span>Role</span>
-              <span className="font-medium text-ink">Admin</span>
+              <span className="font-medium">Admin</span>
             </div>
-          ) : null}
-          {createdAt ? (
-            <div className="flex items-center justify-between">
+          )}
+
+          {createdAt && (
+            <div className="flex justify-between">
               <span>Created</span>
-              <span className="font-medium text-ink">{formatTimestamp(createdAt)}</span>
+              <span className="font-medium">
+                {formatTimestamp(createdAt)}
+              </span>
             </div>
-          ) : null}
+          )}
         </CardContent>
       </Card>
     </div>

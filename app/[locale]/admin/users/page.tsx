@@ -1,10 +1,11 @@
 "use client"
+
 import * as React from "react"
-import type { Locale } from "@/lib/i18n"
+import type { Locale } from "@/Services/i18n"
 import { useAdminGuard } from "@/components/site/useAdminGuard"
-import { db } from "@/lib/firebase"
+import { db } from "@/Services/firebase"
 import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore"
-import { addAuditLog } from "@/lib/audit"
+import { addAuditLog } from "@/Services/audit"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FlatCell, FlatRow, FlatTable } from "@/components/admin/FlatTable"
@@ -29,8 +30,16 @@ function formatTimestamp(value: any) {
   }).format(date)
 }
 
-export default function AdminUsers({ params }: { params: { locale: Locale } }) {
-  const { loading, isAdmin, user, profile } = useAdminGuard(params.locale)
+export default function AdminUsers({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  // ✅ Unwrap params (Next 16)
+  const { locale } = React.use(params)
+
+  const { loading, isAdmin, user, profile } = useAdminGuard(locale)
+
   const [users, setUsers] = React.useState<UserRow[]>([])
   const [search, setSearch] = React.useState("")
   const [busyId, setBusyId] = React.useState<string | null>(null)
@@ -47,19 +56,23 @@ export default function AdminUsers({ params }: { params: { locale: Locale } }) {
         setError(e?.message ?? "Failed to load users")
       }
     }
+
     if (isAdmin) load()
   }, [isAdmin])
 
   async function toggleRole(userRow: UserRow) {
     if (!userRow.id) return
+
     const nextRole = userRow.role === "admin" ? "user" : "admin"
     setBusyId(userRow.id)
+
     try {
       await setDoc(
         doc(db, "users", userRow.id),
         { role: nextRole, updatedAt: serverTimestamp() },
         { merge: true }
       )
+
       if (user) {
         await addAuditLog(db, {
           action: "role.updated",
@@ -69,7 +82,12 @@ export default function AdminUsers({ params }: { params: { locale: Locale } }) {
           metadata: { role: nextRole },
         })
       }
-      setUsers((prev) => prev.map((u) => (u.id === userRow.id ? { ...u, role: nextRole } : u)))
+
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userRow.id ? { ...u, role: nextRole } : u
+        )
+      )
     } finally {
       setBusyId(null)
     }
@@ -78,6 +96,7 @@ export default function AdminUsers({ params }: { params: { locale: Locale } }) {
   const filtered = users.filter((u) => {
     const q = search.trim().toLowerCase()
     if (!q) return true
+
     return (
       (u.name ?? "").toLowerCase().includes(q) ||
       (u.email ?? "").toLowerCase().includes(q)
@@ -101,7 +120,7 @@ export default function AdminUsers({ params }: { params: { locale: Locale } }) {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
         />
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
+        {error && <p className="text-sm text-red-700">{error}</p>}
       </div>
 
       <FlatTable headers={["Name", "Email", "Phone", "Role", "Created", ""]}>
@@ -124,13 +143,14 @@ export default function AdminUsers({ params }: { params: { locale: Locale } }) {
             </FlatCell>
           </FlatRow>
         ))}
-        {!filtered.length ? (
+
+        {!filtered.length && (
           <FlatRow>
             <FlatCell className="text-mutedForeground" colSpan={6}>
               No users found.
             </FlatCell>
           </FlatRow>
-        ) : null}
+        )}
       </FlatTable>
     </div>
   )

@@ -2,7 +2,7 @@
 import { usePathname, useRouter } from "next/navigation"
 import { Globe } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import type { Locale } from "@/lib/i18n"
+import type { Locale } from "@/Services/i18n"
 
 const label: Record<Locale, string> = {
   en: "English",

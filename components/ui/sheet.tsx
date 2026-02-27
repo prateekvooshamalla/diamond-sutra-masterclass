@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { cn } from "@/lib/utils"
+import { cn } from "@/Services/utils"
 
 export const Sheet = DialogPrimitive.Root
 export const SheetTrigger = DialogPrimitive.Trigger

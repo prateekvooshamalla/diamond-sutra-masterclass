@@ -1,5 +1,5 @@
 import Link from "next/link"
-import type { Locale } from "@/lib/i18n"
+import type { Locale } from "@/Services/i18n"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 const settingsLinks = [
@@ -9,11 +9,20 @@ const settingsLinks = [
   { href: "billing", title: "Billing", description: "View billing status and payment settings." },
 ]
 
-export default function SettingsHome({ params }: { params: { locale: Locale } }) {
+export default async function SettingsHome({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  const { locale } = await params // ✅ unwrap here
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
       {settingsLinks.map((item) => (
-        <Link key={item.href} href={`/${params.locale}/dashboard/settings/${item.href}`}>
+        <Link
+          key={item.href}
+          href={`/${locale}/dashboard/settings/${item.href}`} // ✅ use locale
+        >
           <Card className="h-full border-border/70 transition hover:border-palm/30">
             <CardHeader>
               <CardTitle>{item.title}</CardTitle>

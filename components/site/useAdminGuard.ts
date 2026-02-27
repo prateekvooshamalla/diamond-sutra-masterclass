@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import type { Locale } from "@/lib/i18n"
+import type { Locale } from "@/Services/i18n"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/components/site/useUser"
 

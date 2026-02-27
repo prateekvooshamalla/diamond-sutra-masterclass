@@ -2,7 +2,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { signOut } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { auth } from "@/Services/firebase"
 import { LanguageSwitcher } from "@/components/site/LanguageSwitcher"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

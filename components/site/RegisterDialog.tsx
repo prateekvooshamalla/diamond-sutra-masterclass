@@ -4,9 +4,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { Locale } from "@/lib/i18n"
-import { getDictionary } from "@/lib/i18n"
-import { auth, db } from "@/lib/firebase"
+import type { Locale } from "@/Services/i18n"
+import { getDictionary } from "@/Services/i18n"
+import { auth, db } from "@/Services/firebase"
 import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth"
 import { doc, serverTimestamp, setDoc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
@@ -27,7 +27,7 @@ export function RegisterDialog({ locale, open, onOpenChange }: Props) {
 
   async function ensureUserDoc(uid: string) {
     await setDoc(
-      doc(db, "users", uid),
+doc(db, "masterclass", "diamond-sutra", "users", uid),
       {
         name,
         email,

@@ -1,6 +1,14 @@
-import type { Locale } from "@/lib/i18n"
+import type { Locale } from "@/Services/i18n"
 import { LmsShell } from "@/components/lms/LmsShell"
 
-export default function DashboardLayout({ params, children }: { params: { locale: Locale }; children: React.ReactNode }) {
-  return <LmsShell locale={params.locale}>{children}</LmsShell>
+export default async function DashboardLayout({
+  params,
+  children,
+}: {
+  params: Promise<{ locale: Locale }>
+  children: React.ReactNode
+}) {
+  const { locale } = await params // ✅ unwrap params
+
+  return <LmsShell locale={locale}>{children}</LmsShell>
 }

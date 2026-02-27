@@ -1,12 +1,26 @@
 "use client"
+
 import * as React from "react"
-import type { Locale } from "@/lib/i18n"
+import { use } from "react"
+import type { Locale } from "@/Services/i18n"
 import { useAdminGuard } from "@/components/site/useAdminGuard"
-import { db } from "@/lib/firebase"
-import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore"
-import { addAuditLog } from "@/lib/audit"
+import { db } from "@/Services/firebase"
+import {
+  collection,
+  doc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore"
+import { addAuditLog } from "@/Services/audit"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
 type UserRow = {
@@ -20,7 +34,7 @@ type UserRow = {
 
 function formatTimestamp(value: any) {
   if (!value) return "-"
-  const date = value.toDate ? value.toDate() : new Date(value)
+  const date = value?.toDate ? value.toDate() : new Date(value)
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "2-digit",
@@ -28,8 +42,14 @@ function formatTimestamp(value: any) {
   }).format(date)
 }
 
-export default function AdminSettingsAccess({ params }: { params: { locale: Locale } }) {
-  const { loading, isAdmin, user, profile } = useAdminGuard(params.locale)
+export default function AdminSettingsAccess({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  const { locale } = use(params) // ✅ Next 16 safe
+  const { loading, isAdmin, user, profile } = useAdminGuard(locale)
+
   const [users, setUsers] = React.useState<UserRow[]>([])
   const [search, setSearch] = React.useState("")
   const [filter, setFilter] = React.useState<"all" | "admins">("all")
@@ -40,26 +60,41 @@ export default function AdminSettingsAccess({ params }: { params: { locale: Loca
     async function load() {
       if (!isAdmin) return
       setError(null)
+
       try {
         const snaps = await getDocs(collection(db, "users"))
-        setUsers(snaps.docs.map((d) => ({ id: d.id, ...(d.data() as any) })))
+        setUsers(
+          snaps.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          }))
+        )
       } catch (e: any) {
         setError(e?.message ?? "Failed to load users")
       }
     }
+
     if (isAdmin) load()
   }, [isAdmin])
 
   async function toggleRole(userRow: UserRow) {
     if (!userRow.id) return
-    const nextRole = userRow.role === "admin" ? "user" : "admin"
+
+    const nextRole =
+      userRow.role === "admin" ? "user" : "admin"
+
     setBusyId(userRow.id)
+
     try {
       await setDoc(
         doc(db, "users", userRow.id),
-        { role: nextRole, updatedAt: serverTimestamp() },
+        {
+          role: nextRole,
+          updatedAt: serverTimestamp(),
+        },
         { merge: true }
       )
+
       if (user) {
         await addAuditLog(db, {
           action: "role.updated",
@@ -69,7 +104,17 @@ export default function AdminSettingsAccess({ params }: { params: { locale: Loca
           metadata: { role: nextRole },
         })
       }
-      setUsers((prev) => prev.map((u) => (u.id === userRow.id ? { ...u, role: nextRole } : u)))
+
+      // Optimistic UI update
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userRow.id
+            ? { ...u, role: nextRole }
+            : u
+        )
+      )
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to update role")
     } finally {
       setBusyId(null)
     }
@@ -77,37 +122,49 @@ export default function AdminSettingsAccess({ params }: { params: { locale: Loca
 
   const filtered = users.filter((u) => {
     const q = search.trim().toLowerCase()
+
     const matchesQuery =
       !q ||
       (u.name ?? "").toLowerCase().includes(q) ||
       (u.email ?? "").toLowerCase().includes(q)
-    const matchesFilter = filter === "admins" ? u.role === "admin" : true
+
+    const matchesFilter =
+      filter === "admins" ? u.role === "admin" : true
+
     return matchesQuery && matchesFilter
   })
 
-  if (loading || !isAdmin) return null
+  if (loading) return null
+  if (!isAdmin) return null
 
   return (
     <div className="grid gap-6">
       <Card>
         <CardHeader>
           <CardTitle>Access controls</CardTitle>
-          <CardDescription>Promote or demote admin roles.</CardDescription>
+          <CardDescription>
+            Promote or demote admin roles.
+          </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Input
               className="min-w-[220px]"
               placeholder="Search by name or email"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) =>
+                setSearch(e.target.value)
+              }
             />
+
             <Button
               variant={filter === "all" ? "default" : "outline"}
               onClick={() => setFilter("all")}
             >
               All users
             </Button>
+
             <Button
               variant={filter === "admins" ? "default" : "outline"}
               onClick={() => setFilter("admins")}
@@ -115,7 +172,13 @@ export default function AdminSettingsAccess({ params }: { params: { locale: Loca
               Admins only
             </Button>
           </div>
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
+
+          {error && (
+            <p className="text-sm text-red-700">
+              {error}
+            </p>
+          )}
+
           <div className="overflow-auto rounded-lg border border-border">
             <table className="min-w-full text-sm">
               <thead className="bg-muted/40 text-left">
@@ -128,33 +191,55 @@ export default function AdminSettingsAccess({ params }: { params: { locale: Loca
                   <th className="p-3" />
                 </tr>
               </thead>
+
               <tbody>
                 {filtered.map((u) => (
-                  <tr key={u.id} className="border-t border-border">
-                    <td className="p-3">{u.name ?? "-"}</td>
-                    <td className="p-3">{u.email ?? "-"}</td>
-                    <td className="p-3">{u.phone ?? "-"}</td>
-                    <td className="p-3">{u.role ?? "user"}</td>
-                    <td className="p-3">{formatTimestamp(u.createdAt)}</td>
+                  <tr
+                    key={u.id}
+                    className="border-t border-border"
+                  >
+                    <td className="p-3">
+                      {u.name ?? "-"}
+                    </td>
+                    <td className="p-3">
+                      {u.email ?? "-"}
+                    </td>
+                    <td className="p-3">
+                      {u.phone ?? "-"}
+                    </td>
+                    <td className="p-3">
+                      {u.role ?? "user"}
+                    </td>
+                    <td className="p-3">
+                      {formatTimestamp(u.createdAt)}
+                    </td>
                     <td className="p-3 text-right">
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={busyId === u.id}
-                        onClick={() => toggleRole(u)}
+                        onClick={() =>
+                          toggleRole(u)
+                        }
                       >
-                        {u.role === "admin" ? "Demote" : "Promote"}
+                        {u.role === "admin"
+                          ? "Demote"
+                          : "Promote"}
                       </Button>
                     </td>
                   </tr>
                 ))}
-                {!filtered.length ? (
+
+                {!filtered.length && (
                   <tr>
-                    <td className="p-4 text-sm text-mutedForeground" colSpan={6}>
+                    <td
+                      className="p-4 text-sm text-mutedForeground"
+                      colSpan={6}
+                    >
                       No users found.
                     </td>
                   </tr>
-                ) : null}
+                )}
               </tbody>
             </table>
           </div>

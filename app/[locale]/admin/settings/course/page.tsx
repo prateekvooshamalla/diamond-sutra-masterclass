@@ -1,17 +1,24 @@
 "use client"
+
 import * as React from "react"
-import type { Locale } from "@/lib/i18n"
+import { use } from "react"
+import type { Locale } from "@/Services/i18n"
 import { useAdminGuard } from "@/components/site/useAdminGuard"
-import { db } from "@/lib/firebase"
+import { db } from "@/Services/firebase"
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore"
-import { addAuditLog } from "@/lib/audit"
+import { addAuditLog } from "@/Services/audit"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 type Module = { title: string; items: string[] }
-
 type Recording = { title: string; driveEmbedUrl: string }
 
 type Course = {
@@ -42,24 +49,40 @@ const defaultCourse: Course = {
   recordings: [],
 }
 
-export default function AdminSettingsCourse({ params }: { params: { locale: Locale } }) {
-  const { loading, isAdmin, user, profile } = useAdminGuard(params.locale)
-  const [course, setCourse] = React.useState<Course>(defaultCourse)
+export default function AdminSettingsCourse({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  const { locale } = use(params) // ✅ Next 16 safe
+  const { loading, isAdmin, user, profile } = useAdminGuard(locale)
+
+  const [course, setCourse] =
+    React.useState<Course>(defaultCourse)
   const [saving, setSaving] = React.useState(false)
-  const [message, setMessage] = React.useState<string | null>(null)
+  const [message, setMessage] =
+    React.useState<string | null>(null)
 
   React.useEffect(() => {
     async function load() {
       if (!isAdmin) return
-      const snap = await getDoc(doc(db, "courses", "diamond-sutra"))
+
+      const snap = await getDoc(
+        doc(db, "courses", "diamond-sutra")
+      )
+
       if (!snap.exists()) return
+
+      const data = snap.data() as any
+
       setCourse({
         ...defaultCourse,
-        ...(snap.data() as any),
-        modules: (snap.data() as any).modules ?? [],
-        recordings: (snap.data() as any).recordings ?? [],
+        ...data,
+        modules: data.modules ?? [],
+        recordings: data.recordings ?? [],
       })
     }
+
     if (isAdmin) load()
   }, [isAdmin])
 
@@ -71,7 +94,11 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
     })
   }
 
-  function updateModuleItem(moduleIndex: number, itemIndex: number, value: string) {
+  function updateModuleItem(
+    moduleIndex: number,
+    itemIndex: number,
+    value: string
+  ) {
     setCourse((prev) => {
       const next = [...prev.modules]
       const items = [...next[moduleIndex].items]
@@ -82,27 +109,46 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
   }
 
   function addModule() {
-    setCourse((prev) => ({ ...prev, modules: [...prev.modules, { title: "", items: [""] }] }))
+    setCourse((prev) => ({
+      ...prev,
+      modules: [
+        ...prev.modules,
+        { title: "", items: [""] },
+      ],
+    }))
   }
 
   function removeModule(index: number) {
-    setCourse((prev) => ({ ...prev, modules: prev.modules.filter((_, i) => i !== index) }))
+    setCourse((prev) => ({
+      ...prev,
+      modules: prev.modules.filter(
+        (_, i) => i !== index
+      ),
+    }))
   }
 
   function addModuleItem(index: number) {
     setCourse((prev) => {
       const next = [...prev.modules]
-      next[index] = { ...next[index], items: [...next[index].items, ""] }
+      next[index] = {
+        ...next[index],
+        items: [...next[index].items, ""],
+      }
       return { ...prev, modules: next }
     })
   }
 
-  function removeModuleItem(moduleIndex: number, itemIndex: number) {
+  function removeModuleItem(
+    moduleIndex: number,
+    itemIndex: number
+  ) {
     setCourse((prev) => {
       const next = [...prev.modules]
       next[moduleIndex] = {
         ...next[moduleIndex],
-        items: next[moduleIndex].items.filter((_, i) => i !== itemIndex),
+        items: next[moduleIndex].items.filter(
+          (_, i) => i !== itemIndex
+        ),
       }
       return { ...prev, modules: next }
     })
@@ -111,14 +157,24 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
   function addRecording() {
     setCourse((prev) => ({
       ...prev,
-      recordings: [...prev.recordings, { title: "", driveEmbedUrl: "" }],
+      recordings: [
+        ...prev.recordings,
+        { title: "", driveEmbedUrl: "" },
+      ],
     }))
   }
 
-  function updateRecording(index: number, key: keyof Recording, value: string) {
+  function updateRecording(
+    index: number,
+    key: keyof Recording,
+    value: string
+  ) {
     setCourse((prev) => {
       const next = [...prev.recordings]
-      next[index] = { ...next[index], [key]: value }
+      next[index] = {
+        ...next[index],
+        [key]: value,
+      }
       return { ...prev, recordings: next }
     })
   }
@@ -126,13 +182,16 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
   function removeRecording(index: number) {
     setCourse((prev) => ({
       ...prev,
-      recordings: prev.recordings.filter((_, i) => i !== index),
+      recordings: prev.recordings.filter(
+        (_, i) => i !== index
+      ),
     }))
   }
 
   async function saveCourse() {
     setSaving(true)
     setMessage(null)
+
     try {
       await setDoc(
         doc(db, "courses", "diamond-sutra"),
@@ -143,6 +202,7 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
         },
         { merge: true }
       )
+
       if (user) {
         await addAuditLog(db, {
           action: "course.updated",
@@ -152,6 +212,7 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
           metadata: { title: course.title },
         })
       }
+
       setMessage("Saved course settings.")
     } catch (e: any) {
       setMessage(e?.message ?? "Save failed")
@@ -160,10 +221,11 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
     }
   }
 
-  if (loading || !isAdmin) return null
+  if (loading) return null
+  if (!isAdmin) return null
 
   return (
-    <div className="grid gap-6">
+   <div className="grid gap-6">
       <Card>
         <CardHeader>
           <CardTitle>Core settings</CardTitle>
@@ -318,3 +380,6 @@ export default function AdminSettingsCourse({ params }: { params: { locale: Loca
     </div>
   )
 }
+
+
+
