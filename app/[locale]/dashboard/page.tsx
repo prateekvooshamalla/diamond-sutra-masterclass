@@ -199,6 +199,25 @@
 //   )
 // }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 "use client"
 
 import * as React from "react"
@@ -244,7 +263,7 @@ export default function Dashboard({
       if (!user) return
 
       const enrollmentSnap = await getDoc(
-        doc(db, "enrollments", `diamond-sutra_${user.uid}`)
+        doc(db, "enrollments", `${user.uid}_diamond-sutra`)
       )
 
       setStatus(
@@ -264,7 +283,8 @@ export default function Dashboard({
     if (!user) return
 
     await setDoc(
-      doc(db, "enrollments", `diamond-sutra_${user.uid}`),
+      // doc(db, "enrollments", `diamond-sutra_${user.uid}`),
+      doc(db, "enrollments", `${user.uid}_diamond-sutra`),
       {
         uid: user.uid,
         courseId: "diamond-sutra",

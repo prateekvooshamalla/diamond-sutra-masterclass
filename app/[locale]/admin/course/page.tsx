@@ -359,6 +359,9 @@
 //   )
 // }
 
+
+
+
 "use client"
 
 import * as React from "react"
@@ -403,6 +406,12 @@ export default function AdminCourse({
 }) {
   const { locale } = use(params)
   const { loading, isAdmin, user, profile } = useAdminGuard(locale)
+
+  React.useEffect(() => {
+  console.log("USER UID:", user?.uid)
+  console.log("IS ADMIN (guard):", isAdmin)
+  console.log("PROFILE:", profile)
+}, [user, isAdmin, profile])
 
   const [course, setCourse] = React.useState<Course>(defaultCourse)
   const [saving, setSaving] = React.useState(false)
@@ -501,39 +510,43 @@ export default function AdminCourse({
     }))
   }
 
-  async function saveCourse() {
-    setSaving(true)
-    setMessage(null)
+async function saveCourse() {
 
-    try {
-      await setDoc(
-        doc(db, "courses", "diamond-sutra"),
-        {
-          ...course,
-          batchSize: Number(course.batchSize || 30),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
+   console.log("SAVE CLICKED - UID:", user?.uid)
+  console.log("SAVE CLICKED - isAdmin:", isAdmin)
+  setSaving(true)
+  setMessage(null)
 
-      if (user) {
-        await addAuditLog(db, {
-          action: "course.updated",
-          actorUid: user.uid,
-          actorName: profile?.name ?? null,
-          target: "courses/diamond-sutra",
-          metadata: { title: course.title },
-        })
-      }
+  try {
+    await setDoc(
+      doc(db, "courses", "diamond-sutra"),
+      {
+        ...course,
+        batchSize: Number(course.batchSize || 30),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
 
-      setMessage("Saved course settings.")
-    } catch (e: any) {
-      setMessage(e?.message ?? "Save failed")
-    } finally {
-      setSaving(false)
+    if (user) {
+      await addAuditLog(db, {
+        action: "course.updated",
+        actorUid: user.uid,
+        actorName: profile?.name ?? null,
+        target: "courses/diamond-sutra",
+        metadata: { title: course.title },
+      })
     }
-  }
 
+
+    setMessage("Course saved successfully.")
+  } catch (e: any) {
+    setMessage(e?.message ?? "Save failed")
+  } finally {
+    setSaving(false)
+  }
+}
   if (loading) return null
   if (!isAdmin) return null
 
