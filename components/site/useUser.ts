@@ -24,15 +24,27 @@ export function useUser() {
         setLoading(false)
         return
       }
-      const snap = await getDoc(doc(db, "users", u.uid))
-      const data = snap.exists() ? snap.data() : {}
-      setProfile({
-        uid: u.uid,
-        email: u.email,
-        name: (data as any).name ?? u.displayName ?? null,
-        role: (data as any).role ?? "user",
-      })
-      setLoading(false)
+
+      try {
+        const snap = await getDoc(doc(db, "users", u.uid))
+        const data = snap.exists() ? snap.data() : {}
+        setProfile({
+          uid: u.uid,
+          email: u.email,
+          name: (data as any).name ?? u.displayName ?? null,
+          role: (data as any).role ?? "user",
+        })
+      } catch (e) {
+        // permission denied or network error — fall back to basic auth profile
+        setProfile({
+          uid: u.uid,
+          email: u.email,
+          name: u.displayName ?? null,
+          role: "user",
+        })
+      } finally {
+        setLoading(false)
+      }
     })
     return () => unsub()
   }, [])

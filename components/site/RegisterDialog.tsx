@@ -8,7 +8,7 @@ import type { Locale } from "@/Services/i18n"
 import { getDictionary } from "@/Services/i18n"
 import { auth, db } from "@/Services/firebase"
 import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth"
-import { doc, serverTimestamp, setDoc } from "firebase/firestore"
+import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 
 type Props = { locale: Locale; open: boolean; onOpenChange: (v: boolean) => void }
@@ -25,12 +25,13 @@ export function RegisterDialog({ locale, open, onOpenChange }: Props) {
   const [ok, setOk] = React.useState<string | null>(null)
   const [err, setErr] = React.useState<string | null>(null)
 
-  async function ensureUserDoc(uid: string) {
+  // ── Write user to top-level users collection (same as useUser reads from) ──
+  async function ensureUserDoc(uid: string, overrideName?: string, overrideEmail?: string) {
     await setDoc(
-doc(db, "masterclass", "diamond-sutra", "users", uid),
+      doc(db, "users", uid),
       {
-        name,
-        email,
+        name: overrideName ?? name,
+        email: overrideEmail ?? email,
         phone,
         role: "user",
         createdAt: serverTimestamp(),
@@ -40,19 +41,28 @@ doc(db, "masterclass", "diamond-sutra", "users", uid),
     )
   }
 
-  async function createEnrollment(uid: string) {
-    // Create an enrollment as pending payment.
-    await setDoc(
-      doc(db, "enrollments", `${uid}_diamond-sutra`),
-      {
-        uid,
-        courseId: "diamond-sutra",
-        status: "not_enrolled",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    )
+  // ── Create enrollments for ALL existing courses ──
+  async function createEnrollments(uid: string) {
+    try {
+      const snap = await getDocs(collection(db, "courses"))
+      await Promise.all(
+        snap.docs.map((courseDoc) =>
+          setDoc(
+            doc(db, "enrollments", `${uid}_${courseDoc.id}`),
+            {
+              uid,
+              courseId: courseDoc.id,
+              status: "not_enrolled",
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          )
+        )
+      )
+    } catch (_) {
+      // non-fatal — enrollment can be created later
+    }
   }
 
   async function handleEmailRegister(e: React.FormEvent) {
@@ -63,9 +73,8 @@ doc(db, "masterclass", "diamond-sutra", "users", uid),
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       await ensureUserDoc(cred.user.uid)
-      await createEnrollment(cred.user.uid)
+      await createEnrollments(cred.user.uid)
       setOk(d.success)
-      // Redirect to dashboard after a short delay
       setTimeout(() => router.push(`/${locale}/dashboard`), 700)
     } catch (e: any) {
       setErr(e?.message ?? "Registration failed")
@@ -81,10 +90,10 @@ doc(db, "masterclass", "diamond-sutra", "users", uid),
     try {
       const provider = new GoogleAuthProvider()
       const cred = await signInWithPopup(auth, provider)
-      if (!name) setName(cred.user.displayName || "")
-      if (!email) setEmail(cred.user.email || "")
-      await ensureUserDoc(cred.user.uid)
-      await createEnrollment(cred.user.uid)
+      const resolvedName = cred.user.displayName || name
+      const resolvedEmail = cred.user.email || email
+      await ensureUserDoc(cred.user.uid, resolvedName, resolvedEmail)
+      await createEnrollments(cred.user.uid)
       setOk(d.success)
       setTimeout(() => router.push(`/${locale}/dashboard`), 700)
     } catch (e: any) {
