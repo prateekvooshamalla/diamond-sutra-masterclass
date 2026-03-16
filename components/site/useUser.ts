@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { onAuthStateChanged, type User } from "firebase/auth"
+import { onAuthStateChanged, reload, type User } from "firebase/auth"
 import { auth, db } from "@/Services/firebase"
 import { doc, getDoc } from "firebase/firestore"
 
@@ -18,24 +18,41 @@ export function useUser() {
 
   React.useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u)
+
+      // No user logged in
       if (!u) {
+        setUser(null)
         setProfile(null)
         setLoading(false)
         return
       }
 
+      // Refresh Firebase user to get latest verification state
+      await reload(u)
+
+      // If email not verified
+      if (!u.emailVerified) {
+        setUser(u)
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+
+      // Verified user
+      setUser(u)
+
       try {
         const snap = await getDoc(doc(db, "users", u.uid))
         const data = snap.exists() ? snap.data() : {}
+
         setProfile({
           uid: u.uid,
           email: u.email,
           name: (data as any).name ?? u.displayName ?? null,
           role: (data as any).role ?? "user",
         })
+
       } catch (e) {
-        // permission denied or network error — fall back to basic auth profile
         setProfile({
           uid: u.uid,
           email: u.email,
@@ -46,6 +63,7 @@ export function useUser() {
         setLoading(false)
       }
     })
+
     return () => unsub()
   }, [])
 

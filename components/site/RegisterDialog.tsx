@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import type { Locale } from "@/Services/i18n"
 import { getDictionary } from "@/Services/i18n"
 import { auth, db } from "@/Services/firebase"
-import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth"
+import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup, sendEmailVerification } from "firebase/auth"
 import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 
@@ -22,26 +22,9 @@ export function RegisterDialog({ locale, open, onOpenChange }: Props) {
   const [phone, setPhone] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [loading, setLoading] = React.useState(false)
-  const [ok, setOk] = React.useState<string | null>(null)
   const [err, setErr] = React.useState<string | null>(null)
+  const [registered, setRegistered] = React.useState(false)
 
-  // ── Write user to top-level users collection (same as useUser reads from) ──
-  async function ensureUserDoc(uid: string, overrideName?: string, overrideEmail?: string) {
-    await setDoc(
-      doc(db, "users", uid),
-      {
-        name: overrideName ?? name,
-        email: overrideEmail ?? email,
-        phone,
-        role: "user",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    )
-  }
-
-  // ── Create enrollments for ALL existing courses ──
   async function createEnrollments(uid: string) {
     try {
       const snap = await getDocs(collection(db, "courses"))
@@ -61,41 +44,66 @@ export function RegisterDialog({ locale, open, onOpenChange }: Props) {
         )
       )
     } catch (_) {
-      // non-fatal — enrollment can be created later
+      // non-fatal
     }
   }
 
-  async function handleEmailRegister(e: React.FormEvent) {
-    e.preventDefault()
-    setErr(null)
-    setOk(null)
-    setLoading(true)
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password)
-      await ensureUserDoc(cred.user.uid)
-      await createEnrollments(cred.user.uid)
-      setOk(d.success)
-      setTimeout(() => router.push(`/${locale}/dashboard`), 700)
-    } catch (e: any) {
-      setErr(e?.message ?? "Registration failed")
-    } finally {
-      setLoading(false)
-    }
+async function handleEmailRegister(e: React.FormEvent) {
+  e.preventDefault()
+  setErr(null)
+  setLoading(true)
+
+  try {
+    const normalizedEmail = email.trim().toLowerCase()
+    const cred = await createUserWithEmailAndPassword(auth, email, password)
+
+    await setDoc(doc(db, "users", cred.user.uid), {
+      name,
+      email,
+      phone,
+      role: "user",
+      emailVerified: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true })
+
+    await createEnrollments(cred.user.uid)
+    console.log("Sending verification email to:", cred.user.email)
+
+    // Send verification email
+    await sendEmailVerification(cred.user)
+
+    console.log("Verification email request sent")
+
+   
+    await auth.signOut()
+
+    setRegistered(true)
+
+  } catch (e: any) {
+    setErr(e?.message ?? "Registration failed")
+  } finally {
+    setLoading(false)
   }
+}
 
   async function handleGoogle() {
     setErr(null)
-    setOk(null)
     setLoading(true)
     try {
       const provider = new GoogleAuthProvider()
       const cred = await signInWithPopup(auth, provider)
-      const resolvedName = cred.user.displayName || name
-      const resolvedEmail = cred.user.email || email
-      await ensureUserDoc(cred.user.uid, resolvedName, resolvedEmail)
+      await setDoc(doc(db, "users", cred.user.uid), {
+        name: cred.user.displayName || name,
+        email: cred.user.email || email,
+        phone,
+        role: "user",
+        emailVerified: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
       await createEnrollments(cred.user.uid)
-      setOk(d.success)
-      setTimeout(() => router.push(`/${locale}/dashboard`), 700)
+      router.push(`/${locale}/dashboard`)
     } catch (e: any) {
       setErr(e?.message ?? "Google sign-in failed")
     } finally {
@@ -104,67 +112,105 @@ export function RegisterDialog({ locale, open, onOpenChange }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => {
+      if (!v) {
+        setRegistered(false)
+        setErr(null)
+      }
+      onOpenChange(v)
+    }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{d.modalTitle}</DialogTitle>
           <DialogDescription>{d.modalDescription}</DialogDescription>
         </DialogHeader>
 
-        <div className="mb-4 flex gap-2">
-          <Button
-            type="button"
-            variant={mode === "email" ? "default" : "outline"}
-            onClick={() => setMode("email")}
-          >
-            Email
-          </Button>
-          <Button
-            type="button"
-            variant={mode === "google" ? "default" : "outline"}
-            onClick={() => setMode("google")}
-          >
-            Google
-          </Button>
-        </div>
-
-        {mode === "email" ? (
-          <form onSubmit={handleEmailRegister} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">{d.fullName}</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+        {registered ? (
+          // ✅ Verification screen — stays on auth page
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-2">
+              <p className="text-sm font-medium text-green-800">📧 Verification email sent!</p>
+              <p className="text-sm text-green-700">
+                We sent a verification link to{" "}
+                <span className="font-semibold">{email}</span>.
+                Please check your inbox and click the link to activate your account.
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">{d.email}</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">{d.phone}</Label>
-              <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
-
-            {err ? <p className="text-sm text-red-700">{err}</p> : null}
-            {ok ? <p className="text-sm text-palm">{ok}</p> : null}
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {d.continue}
-            </Button>
-          </form>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-mutedForeground">
-              Sign in with Google to create your account and continue.
+            <p className="text-xs text-gray-500 text-center">
+              Did not receive it? Check your spam/junk folder.
             </p>
-            {err ? <p className="text-sm text-red-700">{err}</p> : null}
-            {ok ? <p className="text-sm text-palm">{ok}</p> : null}
-            <Button type="button" onClick={handleGoogle} className="w-full" disabled={loading}>
-              Continue with Google
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => {
+                setRegistered(false)
+                setErr(null)
+                onOpenChange(false)
+              }}
+            >
+              Go to Login
             </Button>
           </div>
+        ) : (
+          <>
+            <div className="mb-4 flex gap-2">
+              <Button
+                type="button"
+                variant={mode === "email" ? "default" : "outline"}
+                onClick={() => setMode("email")}
+              >
+                Email
+              </Button>
+              <Button
+                type="button"
+                variant={mode === "google" ? "default" : "outline"}
+                onClick={() => setMode("google")}
+              >
+                Google
+              </Button>
+            </div>
+
+            {mode === "email" ? (
+              <form onSubmit={handleEmailRegister} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">{d.fullName}</Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">{d.email}</Label>
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">{d.phone}</Label>
+                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                {err && <p className="text-sm text-red-700">{err}</p>}
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Creating account..." : d.continue}
+                </Button>
+              </form>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-mutedForeground">
+                  Sign in with Google to create your account and continue.
+                </p>
+                {err && <p className="text-sm text-red-700">{err}</p>}
+                <Button type="button" onClick={handleGoogle} className="w-full" disabled={loading}>
+                  {loading ? "Signing in..." : "Continue with Google"}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>
