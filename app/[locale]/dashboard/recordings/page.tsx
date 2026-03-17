@@ -6,7 +6,12 @@ import type { Locale } from "@/Services/i18n"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/components/site/useUser"
 import { db } from "@/Services/firebase"
-import { collection, getDocs } from "firebase/firestore"
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+} from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -70,9 +75,7 @@ function getEmbedUrl(url: string, type?: string): string {
     const id = match?.[1]
     return id ? `https://www.youtube.com/embed/${id}` : url
   }
-  // Firebase Storage — direct URL, no conversion needed
   if (url.includes("firebasestorage.googleapis.com")) return url
-  // Google Drive
   return url.replace("/view", "/preview").replace("/edit", "/preview")
 }
 
@@ -94,7 +97,7 @@ function extractRecordings(course: Course): Recording[] {
     })
   }
 
-  // 2. Lesson videoUrls inside modules (new structure)
+  // 2. Lesson videoUrls inside modules
   if (course.modules?.length) {
     course.modules
       .sort((a, b) => a.order - b.order)
@@ -142,7 +145,7 @@ export default function RecordingsPage({
     if (!loading && !user) router.push(`/${locale}`)
   }, [loading, user, router, locale])
 
-  // ── load all courses ──────────────────────────────────────────────────────
+  // ── load courses ──────────────────────────────────────────────────────────
   React.useEffect(() => {
     async function load() {
       if (!user) return
@@ -151,22 +154,55 @@ export default function RecordingsPage({
       setPageError(null)
 
       try {
-        // Force fresh auth token so Firestore rules evaluate correctly
         await user.getIdToken(true)
 
-        const snap = await getDocs(collection(db, "courses"))
-        const list = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Course, "id">),
-          modules: (d.data().modules ?? []).map((m: any) => ({
-            ...m,
-            lessons: m.lessons ?? [],
-          })),
-          recordings: d.data().recordings ?? [],
-        })) as Course[]
+        // 1. Check once if this user is an LMS admin
+        const userDocSnap = await getDoc(doc(db, "users", user.uid))
+        const isLmsAdmin =
+          userDocSnap.exists() && userDocSnap.data().role === "admin"
 
-        // only keep courses that have at least one recording/lesson video
-        const withRecordings = list.filter(
+        // 2. Fetch all courses
+        const coursesSnap = await getDocs(collection(db, "courses"))
+
+        // 3. For each course, check enrollment (skip check for admins)
+        const enrollmentChecks = await Promise.all(
+          coursesSnap.docs.map(async (courseDoc) => {
+
+            if (!isLmsAdmin) {
+              // Regular user — must have active or pending_payment enrollment
+              const enrollSnap = await getDoc(
+                doc(db, "enrollments", `${user.uid}_${courseDoc.id}`)
+              )
+              const enrollStatus = enrollSnap.exists()
+                ? enrollSnap.data().status
+                : null
+
+              if (!enrollStatus || enrollStatus === "not_enrolled") {
+                return null
+              }
+            }
+
+            // Admin bypasses enrollment check — sees all courses
+            const data = courseDoc.data()
+            return {
+              id: courseDoc.id,
+              title: data.title,
+              recordings: data.recordings ?? [],
+              modules: (data.modules ?? []).map((m: any) => ({
+                ...m,
+                lessons: m.lessons ?? [],
+              })),
+            } as Course
+          })
+        )
+
+        // Filter out nulls (not enrolled)
+        const enrolledCourses = enrollmentChecks.filter(
+          (c): c is Course => c !== null
+        )
+
+        // Only keep courses that have recordings or lesson videos
+        const withRecordings = enrolledCourses.filter(
           (c) => extractRecordings(c).length > 0
         )
 
@@ -237,7 +273,7 @@ export default function RecordingsPage({
     )
   }
 
-  // ── empty state ───────────────────────────────────────────────────────────
+  // ── not enrolled / empty state ────────────────────────────────────────────
   if (courses.length === 0) {
     return (
       <div className="w-full space-y-6">
@@ -249,11 +285,17 @@ export default function RecordingsPage({
         </div>
         <Card className="border-border/70">
           <CardContent className="py-16 text-center">
-            <p className="text-4xl mb-4">🎬</p>
-            <p className="font-semibold">No recordings yet</p>
+            <p className="text-4xl mb-4">🔒</p>
+            <p className="font-semibold">No recordings available</p>
             <p className="text-sm text-mutedForeground mt-1">
-              Add recording URLs to lessons in the admin panel — they will appear here.
+              You need to be enrolled in a course to access its recordings.
             </p>
+            <Button
+              className="mt-4"
+              onClick={() => router.push(`/${locale}`)}
+            >
+              Browse Courses
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -332,7 +374,6 @@ export default function RecordingsPage({
               </CardHeader>
 
               <CardContent className="space-y-3">
-                {/* Thumbnail with play overlay */}
                 <div
                   className="relative aspect-video w-full overflow-hidden rounded-lg border border-border/60 bg-muted cursor-pointer"
                   onClick={() => handleWatch(recording)}

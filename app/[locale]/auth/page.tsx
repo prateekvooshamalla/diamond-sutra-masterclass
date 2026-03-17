@@ -12,10 +12,25 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithPopup,
+  sendEmailVerification,
+  reload,
 } from "firebase/auth"
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore"
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -33,28 +48,50 @@ export default function AuthPage({
 }: {
   params: Promise<{ locale: Locale }>
 }) {
-  const { locale } = use(params) // ✅ Next 16 safe
+  const { locale } = use(params)
   const d = React.useMemo(() => getDictionary(locale), [locale])
 
   const router = useRouter()
   const [tab, setTab] = React.useState<Tab>("login")
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = React.useState<string | null>(null)
 
+  // Login fields
   const [loginEmail, setLoginEmail] = React.useState("")
   const [loginPassword, setLoginPassword] = React.useState("")
 
+  // Register fields
   const [name, setName] = React.useState("")
   const [phone, setPhone] = React.useState("")
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
 
+  // Resend state
+  const [resendTimer, setResendTimer] = React.useState(0)
+  const [resending, setResending] = React.useState(false)
+  const [showResend, setShowResend] = React.useState(false)
+
   React.useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) router.replace(`/${locale}/dashboard`)
+    if (resendTimer > 0) {
+      const t = setTimeout(() => setResendTimer(resendTimer - 1), 1000)
+      return () => clearTimeout(t)
+    }
+  }, [resendTimer])
+
+  React.useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        await reload(user)
+        if (user.emailVerified) {
+          router.replace(`/${locale}/dashboard`)
+        }
+      }
     })
     return () => unsub()
   }, [locale, router])
+
+  // ── helpers ──────────────────────────────────────────────────────────────
 
   async function ensureUserDoc(input: UserProfileInput) {
     const ref = doc(db, "users", input.uid)
@@ -84,19 +121,55 @@ export default function AuthPage({
     )
   }
 
+  // ── Creates a pending_payment enrollment for every course ─────────────────
+  async function createEnrollments(uid: string) {
+    try {
+      const snap = await getDocs(collection(db, "courses"))
+      await Promise.all(
+        snap.docs.map((courseDoc) =>
+          setDoc(
+            doc(db, "enrollments", `${uid}_${courseDoc.id}`),
+            {
+              uid,
+              courseId: courseDoc.id,
+              status: "pending_payment",  // ← NOT "not_enrolled"
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }  // safe to call again — won't overwrite active status
+          )
+        )
+      )
+    } catch (_) {
+      // non-fatal — enrollment can be created manually by admin
+    }
+  }
+
+  // ── Login ─────────────────────────────────────────────────────────────────
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     if (loading) return
-
     setLoading(true)
     setError(null)
+    setSuccessMsg(null)
+    setShowResend(false)
 
     try {
-      await signInWithEmailAndPassword(
+      const cred = await signInWithEmailAndPassword(
         auth,
         loginEmail.trim(),
         loginPassword
       )
+
+      await reload(cred.user)
+
+      if (!cred.user.emailVerified) {
+        await auth.signOut()
+        setError("Please verify your email before logging in. Check your inbox.")
+        setShowResend(true)
+        return
+      }
+
       router.replace(`/${locale}/dashboard`)
     } catch (e: any) {
       setError(e?.message ?? "Login failed")
@@ -105,28 +178,51 @@ export default function AuthPage({
     }
   }
 
+  // ── Register ──────────────────────────────────────────────────────────────
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
     if (loading) return
-
     setLoading(true)
     setError(null)
+    setSuccessMsg(null)
 
     try {
+      const normalizedEmail = email.trim().toLowerCase()
+
+      // 1. Create Firebase Auth user
       const cred = await createUserWithEmailAndPassword(
         auth,
-        email.trim(),
+        normalizedEmail,
         password
       )
 
+      // 2. Save user doc to /users
       await ensureUserDoc({
         uid: cred.user.uid,
         name: name.trim(),
-        email: email.trim(),
+        email: normalizedEmail,
         phone: phone.trim(),
       })
 
-      router.replace(`/${locale}/dashboard`)
+      // 3. Create pending_payment enrollment for all courses ← THIS WAS MISSING
+      await createEnrollments(cred.user.uid)
+
+      // 4. Send verification email
+      await sendEmailVerification(cred.user)
+
+      // 5. Switch to login tab and show success
+      setTab("login")
+      setSuccessMsg(
+        `Verification email sent to ${normalizedEmail}. Please verify your email then log in.`
+      )
+      setResendTimer(60)
+      setShowResend(true)
+
+      // Clear register fields
+      setName("")
+      setPhone("")
+      setEmail("")
+      setPassword("")
     } catch (e: any) {
       setError(e?.message ?? "Registration failed")
     } finally {
@@ -134,21 +230,58 @@ export default function AuthPage({
     }
   }
 
+  // ── Resend verification ───────────────────────────────────────────────────
+  async function handleResend() {
+    if (resendTimer > 0 || resending) return
+    setResending(true)
+    setError(null)
+    try {
+      const user = auth.currentUser
+      if (!user) {
+        setError("Please try logging in again to resend verification email.")
+        return
+      }
+      await reload(user)
+      if (user.emailVerified) {
+        setSuccessMsg("Email already verified! You can now log in.")
+        setShowResend(false)
+        return
+      }
+      await sendEmailVerification(user)
+      setSuccessMsg("Verification email resent! Check your inbox.")
+      setResendTimer(60)
+    } catch (e: any) {
+      setError("Failed to resend. Please try again.")
+    } finally {
+      setResending(false)
+    }
+  }
+
+  // ── Google ────────────────────────────────────────────────────────────────
   async function handleGoogle() {
     if (loading) return
-
     setLoading(true)
     setError(null)
+    setSuccessMsg(null)
 
     try {
       const provider = new GoogleAuthProvider()
       const cred = await signInWithPopup(auth, provider)
+
+      // Check if this is a brand new Google user
+      const isNewUser =
+        cred.user.metadata.creationTime === cred.user.metadata.lastSignInTime
 
       await ensureUserDoc({
         uid: cred.user.uid,
         name: cred.user.displayName ?? "",
         email: cred.user.email ?? "",
       })
+
+      // Only create enrollments for new Google signups
+      if (isNewUser) {
+        await createEnrollments(cred.user.uid)
+      }
 
       router.replace(`/${locale}/dashboard`)
     } catch (e: any) {
@@ -158,6 +291,7 @@ export default function AuthPage({
     }
   }
 
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <main className="mx-auto flex min-h-[calc(100vh-80px)] max-w-4xl items-center px-4 py-12">
       <Card className="mx-auto w-full max-w-xl">
@@ -175,6 +309,7 @@ export default function AuthPage({
               onClick={() => {
                 setTab("login")
                 setError(null)
+                setSuccessMsg(null)
               }}
             >
               {d.authLoginTab}
@@ -185,11 +320,37 @@ export default function AuthPage({
               onClick={() => {
                 setTab("register")
                 setError(null)
+                setSuccessMsg(null)
+                setShowResend(false)
               }}
             >
               {d.authRegisterTab}
             </Button>
           </div>
+
+          {/* Success message */}
+          {successMsg && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+              <p className="text-sm text-green-700">{successMsg}</p>
+            </div>
+          )}
+
+          {/* Resend button */}
+          {showResend && tab === "login" && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={resending || resendTimer > 0}
+              onClick={handleResend}
+            >
+              {resending
+                ? "Sending..."
+                : resendTimer > 0
+                ? `Resend verification email in ${resendTimer}s`
+                : "Resend verification email"}
+            </Button>
+          )}
 
           {/* Login Form */}
           {tab === "login" ? (
@@ -204,7 +365,6 @@ export default function AuthPage({
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="login-password">{d.authPassword}</Label>
                 <Input
@@ -215,9 +375,7 @@ export default function AuthPage({
                   required
                 />
               </div>
-
               {error && <p className="text-sm text-red-700">{error}</p>}
-
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Please wait..." : d.authLoginCta}
               </Button>
@@ -234,7 +392,6 @@ export default function AuthPage({
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="register-phone">{d.authPhone}</Label>
                 <Input
@@ -244,7 +401,6 @@ export default function AuthPage({
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="register-email">{d.authEmail}</Label>
                 <Input
@@ -255,7 +411,6 @@ export default function AuthPage({
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="register-password">{d.authPassword}</Label>
                 <Input
@@ -266,9 +421,7 @@ export default function AuthPage({
                   required
                 />
               </div>
-
               {error && <p className="text-sm text-red-700">{error}</p>}
-
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Please wait..." : d.authRegisterCta}
               </Button>
@@ -276,13 +429,13 @@ export default function AuthPage({
           )}
 
           {/* Divider */}
-          <div className="flex items-center gap-3 text-xs text-mutedForeground">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="h-px flex-1 bg-border" />
             {d.authOr}
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          {/* Google Login */}
+          {/* Google */}
           <Button
             type="button"
             variant="outline"

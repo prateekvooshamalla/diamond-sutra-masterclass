@@ -194,10 +194,8 @@ function RecordingInput({
   return (
     <div className="space-y-3 md:col-span-2">
       <Label>
-        Recording{" "}
-        <span className="text-xs text-mutedForeground font-normal">
-          (shows in student Recordings tab)
-        </span>
+        Course Video{" "}
+       
       </Label>
 
       {/* Tab switcher */}
@@ -236,7 +234,7 @@ function RecordingInput({
           />
           {lesson.videoUrl && lesson.videoType !== "upload" && (
             <p className="text-xs text-green-600">
-              ✅ {lesson.videoType === "youtube" ? "🎬 YouTube" : "🎥 Google Drive"} recording linked
+              ✅ {lesson.videoType === "youtube" ? "🎬 YouTube" : "🎥 Google Drive"} link is added
             </p>
           )}
         </div>
@@ -251,7 +249,7 @@ function RecordingInput({
               <div className="flex items-center gap-2">
                 <span className="text-green-600 text-lg">✅</span>
                 <div>
-                  <p className="text-sm font-medium text-green-800">Recording uploaded</p>
+                  <p className="text-sm font-medium text-green-800">course video uploaded</p>
                   <p className="text-xs text-green-600 truncate max-w-[260px]">
                     {fileName || "Stored in Firebase Storage"}
                   </p>
@@ -599,187 +597,190 @@ export default function AdminCourse({
           )}
 
           <Accordion type="multiple" className="space-y-3">
+            {/* ✅ FIX: key moved to React.Fragment so React can track it before
+                Radix UI's Primitive.div consumes the AccordionItem children */}
             {course.modules.map((module) => (
-              <AccordionItem
-                key={module.id}
-                value={module.id}
-                className="rounded-lg border border-border bg-muted/20"
-              >
-                <AccordionTrigger className="px-4 hover:no-underline">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-xs">Section {module.order}</Badge>
-                    <span className="font-medium">
-                      {module.title || `Untitled module ${module.order}`}
-                    </span>
-                    <span className="text-xs text-mutedForeground">
-                      {(module.lessons ?? []).length} lesson
-                      {(module.lessons ?? []).length !== 1 ? "s" : ""}
-                      {module.estimatedDuration ? ` · ${module.estimatedDuration}` : ""}
-                    </span>
-                  </div>
-                </AccordionTrigger>
-
-                <AccordionContent className="px-4 pb-4 space-y-4">
-                  {/* Module Fields */}
-                  <div className="grid gap-3 rounded-lg border border-border/60 bg-background p-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Module title</Label>
-                      <Input
-                        value={module.title}
-                        placeholder="e.g. Getting Started"
-                        onChange={(e) => updateModule(module.id, "title", e.target.value)}
-                      />
+              <React.Fragment key={module.id}>
+                <AccordionItem
+                  value={module.id}
+                  className="rounded-lg border border-border bg-muted/20"
+                >
+                  <AccordionTrigger className="px-4 hover:no-underline">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className="text-xs">Section {module.order}</Badge>
+                      <span className="font-medium">
+                        {module.title || `Untitled module ${module.order}`}
+                      </span>
+                      <span className="text-xs text-mutedForeground">
+                        {(module.lessons ?? []).length} lesson
+                        {(module.lessons ?? []).length !== 1 ? "s" : ""}
+                        {module.estimatedDuration ? ` · ${module.estimatedDuration}` : ""}
+                      </span>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Estimated duration</Label>
-                      <Input
-                        value={module.estimatedDuration}
-                        placeholder="e.g. 1h 20m"
-                        onChange={(e) => updateModule(module.id, "estimatedDuration", e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Module description</Label>
-                      <Textarea
-                        value={module.description}
-                        placeholder="What will students learn in this section?"
-                        rows={2}
-                        onChange={(e) => updateModule(module.id, "description", e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  </AccordionTrigger>
 
-                  {/* Lessons */}
-                  <div className="space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-mutedForeground">
-                      Lessons
-                    </p>
-
-                    {(module.lessons ?? []).map((lesson) => (
-                      <div
-                        key={lesson.id}
-                        className="rounded-lg border border-border/60 bg-background p-4 space-y-3"
-                      >
-                        {/* Lesson top row */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className="text-xs">Lesson {lesson.order}</Badge>
-                            {lesson.isFreePreview && (
-                              <Badge className="bg-green-100 text-green-700 text-xs">Free Preview</Badge>
-                            )}
-                            {lesson.videoType === "youtube" && (
-                              <Badge className="bg-red-100 text-red-700 text-xs">🎬 YouTube</Badge>
-                            )}
-                            {lesson.videoType === "drive" && (
-                              <Badge className="bg-blue-100 text-blue-700 text-xs">🎥 Drive</Badge>
-                            )}
-                            {lesson.videoType === "upload" && (
-                              <Badge className="bg-purple-100 text-purple-700 text-xs">📁 Uploaded</Badge>
-                            )}
-                            {lesson.videoUrl && (
-                              <Badge className="bg-emerald-100 text-emerald-700 text-xs">📹 Recording ready</Badge>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-500 hover:text-red-700"
-                            onClick={() => removeLesson(module.id, lesson.id)}
-                          >
-                            Remove lesson
-                          </Button>
-                        </div>
-
-                        {/* Lesson fields */}
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label>Lesson title</Label>
-                            <Input
-                              value={lesson.title}
-                              placeholder="e.g. Introduction to the Sutra"
-                              onChange={(e) =>
-                                updateLesson(module.id, lesson.id, "title", e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Duration (minutes)</Label>
-                            <Input
-                              type="number"
-                              value={lesson.duration || ""}
-                              placeholder="e.g. 12"
-                              onChange={(e) =>
-                                updateLesson(module.id, lesson.id, "duration", Number(e.target.value))
-                              }
-                            />
-                          </div>
-
-                          {/* ── Recording (URL or Upload) ── */}
-                          <RecordingInput
-                            lesson={lesson}
-                            moduleId={module.id}
-                            courseId={selectedId ?? ""}
-                            onUpdate={updateLesson}
-                          />
-
-                          <div className="space-y-2 md:col-span-2">
-                            <Label>Description</Label>
-                            <Textarea
-                              value={lesson.description}
-                              placeholder="What will students learn in this lesson?"
-                              rows={2}
-                              onChange={(e) =>
-                                updateLesson(module.id, lesson.id, "description", e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2 md:col-span-2">
-                            <Label>
-                              Downloadable resource link{" "}
-                              <span className="text-xs text-mutedForeground font-normal">
-                                (optional PDF, notes, etc.)
-                              </span>
-                            </Label>
-                            <Input
-                              value={lesson.resourceLink}
-                              placeholder="https://drive.google.com/file/..."
-                              onChange={(e) =>
-                                updateLesson(module.id, lesson.id, "resourceLink", e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        {/* Free Preview toggle */}
-                        <div className="flex items-center gap-3 rounded-md border border-border/50 bg-muted/30 px-3 py-2">
-                          <Switch
-                            checked={lesson.isFreePreview}
-                            onCheckedChange={(v) =>
-                              updateLesson(module.id, lesson.id, "isFreePreview", v)
-                            }
-                          />
-                          <div>
-                            <p className="text-sm font-medium">Free preview</p>
-                            <p className="text-xs text-mutedForeground">
-                              Non-enrolled users can watch this lesson
-                            </p>
-                          </div>
-                        </div>
+                  <AccordionContent className="px-4 pb-4 space-y-4">
+                    {/* Module Fields */}
+                    <div className="grid gap-3 rounded-lg border border-border/60 bg-background p-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Module title</Label>
+                        <Input
+                          value={module.title}
+                          placeholder="e.g. Getting Started"
+                          onChange={(e) => updateModule(module.id, "title", e.target.value)}
+                        />
                       </div>
-                    ))}
+                      <div className="space-y-2">
+                        <Label>Estimated duration</Label>
+                        <Input
+                          value={module.estimatedDuration}
+                          placeholder="e.g. 1h 20m"
+                          onChange={(e) => updateModule(module.id, "estimatedDuration", e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Module description</Label>
+                        <Textarea
+                          value={module.description}
+                          placeholder="What will students learn in this section?"
+                          rows={2}
+                          onChange={(e) => updateModule(module.id, "description", e.target.value)}
+                        />
+                      </div>
+                    </div>
 
-                    <Button variant="outline" size="sm" onClick={() => addLesson(module.id)}>
-                      + Add lesson
-                    </Button>
-                  </div>
+                    {/* Lessons */}
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-mutedForeground">
+                        Lessons
+                      </p>
 
-                  <div className="pt-2">
-                    <Button variant="destructive" size="sm" onClick={() => removeModule(module.id)}>
-                      Remove module
-                    </Button>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                      {(module.lessons ?? []).map((lesson) => (
+                        <div
+                          key={lesson.id}
+                          className="rounded-lg border border-border/60 bg-background p-4 space-y-3"
+                        >
+                          {/* Lesson top row */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className="text-xs">Lesson {lesson.order}</Badge>
+                              {lesson.isFreePreview && (
+                                <Badge className="bg-green-100 text-green-700 text-xs">Free Preview</Badge>
+                              )}
+                              {lesson.videoType === "youtube" && (
+                                <Badge className="bg-red-100 text-red-700 text-xs">🎬 YouTube</Badge>
+                              )}
+                              {lesson.videoType === "drive" && (
+                                <Badge className="bg-blue-100 text-blue-700 text-xs">🎥 Drive</Badge>
+                              )}
+                              {lesson.videoType === "upload" && (
+                                <Badge className="bg-purple-100 text-purple-700 text-xs">📁 Uploaded</Badge>
+                              )}
+                              {lesson.videoUrl && (
+                                <Badge className="bg-emerald-100 text-emerald-700 text-xs">📹 Recording ready</Badge>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                              onClick={() => removeLesson(module.id, lesson.id)}
+                            >
+                              Remove lesson
+                            </Button>
+                          </div>
+
+                          {/* Lesson fields */}
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>Lesson title</Label>
+                              <Input
+                                value={lesson.title}
+                                placeholder="e.g. Introduction to the Sutra"
+                                onChange={(e) =>
+                                  updateLesson(module.id, lesson.id, "title", e.target.value)
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Duration (minutes)</Label>
+                              <Input
+                                type="number"
+                                value={lesson.duration || ""}
+                                placeholder="e.g. 12"
+                                onChange={(e) =>
+                                  updateLesson(module.id, lesson.id, "duration", Number(e.target.value))
+                                }
+                              />
+                            </div>
+
+                            {/* ── Recording (URL or Upload) ── */}
+                            <RecordingInput
+                              lesson={lesson}
+                              moduleId={module.id}
+                              courseId={selectedId ?? ""}
+                              onUpdate={updateLesson}
+                            />
+
+                            <div className="space-y-2 md:col-span-2">
+                              <Label>Description</Label>
+                              <Textarea
+                                value={lesson.description}
+                                placeholder="What will students learn in this lesson?"
+                                rows={2}
+                                onChange={(e) =>
+                                  updateLesson(module.id, lesson.id, "description", e.target.value)
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <Label>
+                                Downloadable resource link{" "}
+                                <span className="text-xs text-mutedForeground font-normal">
+                                  (optional PDF, notes, etc.)
+                                </span>
+                              </Label>
+                              <Input
+                                value={lesson.resourceLink}
+                                placeholder="https://drive.google.com/file/..."
+                                onChange={(e) =>
+                                  updateLesson(module.id, lesson.id, "resourceLink", e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          {/* Free Preview toggle */}
+                          <div className="flex items-center gap-3 rounded-md border border-border/50 bg-muted/30 px-3 py-2">
+                            <Switch
+                              checked={lesson.isFreePreview}
+                              onCheckedChange={(v) =>
+                                updateLesson(module.id, lesson.id, "isFreePreview", v)
+                              }
+                            />
+                            <div>
+                              <p className="text-sm font-medium">Free preview</p>
+                              <p className="text-xs text-mutedForeground">
+                                Non-enrolled users can watch this lesson
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button variant="outline" size="sm" onClick={() => addLesson(module.id)}>
+                        + Add lesson
+                      </Button>
+                    </div>
+
+                    <div className="pt-2">
+                      <Button variant="destructive" size="sm" onClick={() => removeModule(module.id)}>
+                        Remove module
+                      </Button>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </React.Fragment>
             ))}
           </Accordion>
 
