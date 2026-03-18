@@ -27,11 +27,12 @@ import { RecordingPlayerDialog } from "@/components/lms/RecordingPlayerDialog"
 
 type Recording = {
   title: string
-  driveEmbedUrl: string
+  driveEmbedUrl: string   // normalised embed/playback URL passed to the player
   date?: string
   courseTitle?: string
   moduleName?: string
   duration?: number
+  description?: string
 }
 
 type Lesson = {
@@ -44,7 +45,7 @@ type Lesson = {
   duration?: number
   isFreePreview?: boolean
   resourceLink?: string
-  driveEmbedUrl?: string
+  driveEmbedUrl?: string  // legacy field
 }
 
 type Module = {
@@ -54,62 +55,103 @@ type Module = {
   lessons: Lesson[]
 }
 
+// ✅ Updated: recordings now use videoUrl/videoType (saved by admin form)
+type AdminRecording = {
+  id: string
+  title: string
+  date?: string
+  videoUrl?: string
+  videoType?: "youtube" | "drive" | "upload" | ""
+  duration?: number
+  description?: string
+  moduleName?: string
+  // legacy field support
+  driveEmbedUrl?: string
+}
+
 type Course = {
   id: string
   title: string
-  recordings?: { title: string; driveEmbedUrl: string; date?: string }[]
+  recordings?: AdminRecording[]
   modules?: Module[]
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Normalise any video URL into a playable/embeddable URL.
+ * Handles YouTube, Google Drive, Firebase Storage, and raw uploads.
+ */
 function getEmbedUrl(url: string, type?: string): string {
   if (!url) return ""
+
+  // YouTube
   if (
     type === "youtube" ||
     url.includes("youtube.com") ||
     url.includes("youtu.be")
   ) {
     const match =
-      url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?]+)/)
+      url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?&]+)/)
     const id = match?.[1]
     return id ? `https://www.youtube.com/embed/${id}` : url
   }
+
+  // Firebase Storage — use directly as <video src>
   if (url.includes("firebasestorage.googleapis.com")) return url
-  return url.replace("/view", "/preview").replace("/edit", "/preview")
+
+  // Google Drive — convert /view or /edit to /preview
+  if (url.includes("drive.google.com")) {
+    return url.replace("/view", "/preview").replace("/edit", "/preview")
+  }
+
+  return url
 }
 
+/**
+ * Extract all playable recordings from a course.
+ * Handles three sources in priority order:
+ *  1. course.recordings[] — standalone session recordings added by admin
+ *  2. module lessons with videoUrl — lesson videos added via module editor
+ *  3. legacy course.recordings[].driveEmbedUrl — old format
+ */
 function extractRecordings(course: Course): Recording[] {
   const result: Recording[] = []
 
-  // 1. Legacy top-level recordings array
+  // ── 1. Standalone session recordings (new admin format) ──
   if (course.recordings?.length) {
     course.recordings.forEach((r) => {
-      if (r.driveEmbedUrl || r.title) {
+      // New format: videoUrl + videoType
+      const rawUrl = r.videoUrl || r.driveEmbedUrl || ""
+      if (rawUrl && r.title) {
         result.push({
           title: r.title,
-          driveEmbedUrl: r.driveEmbedUrl,
+          driveEmbedUrl: getEmbedUrl(rawUrl, r.videoType),
           date: r.date,
+          duration: r.duration,
+          description: r.description,
           courseTitle: course.title,
-          moduleName: "Recordings",
+          moduleName: r.moduleName || "Session Recording",
         })
       }
     })
   }
 
-  // 2. Lesson videoUrls inside modules
+  // ── 2. Lesson videos inside modules ──
   if (course.modules?.length) {
     course.modules
+      .slice()
       .sort((a, b) => a.order - b.order)
       .forEach((module) => {
         ;(module.lessons ?? [])
+          .slice()
           .sort((a, b) => a.order - b.order)
           .forEach((lesson) => {
-            const videoUrl = lesson.videoUrl || lesson.driveEmbedUrl
-            if (videoUrl && lesson.title) {
+            const rawUrl = lesson.videoUrl || lesson.driveEmbedUrl || ""
+            if (rawUrl && lesson.title) {
               result.push({
                 title: lesson.title,
-                driveEmbedUrl: getEmbedUrl(videoUrl, lesson.videoType),
+                driveEmbedUrl: getEmbedUrl(rawUrl, lesson.videoType),
                 courseTitle: course.title,
                 moduleName: module.title,
                 duration: lesson.duration,
@@ -156,7 +198,7 @@ export default function RecordingsPage({
       try {
         await user.getIdToken(true)
 
-        // 1. Check once if this user is an LMS admin
+        // 1. Check if this user is an LMS admin
         const userDocSnap = await getDoc(doc(db, "users", user.uid))
         const isLmsAdmin =
           userDocSnap.exists() && userDocSnap.data().role === "admin"
@@ -164,12 +206,10 @@ export default function RecordingsPage({
         // 2. Fetch all courses
         const coursesSnap = await getDocs(collection(db, "courses"))
 
-        // 3. For each course, check enrollment (skip check for admins)
+        // 3. For each course, check enrollment (skip for admins)
         const enrollmentChecks = await Promise.all(
           coursesSnap.docs.map(async (courseDoc) => {
-
             if (!isLmsAdmin) {
-              // Regular user — must have active or pending_payment enrollment
               const enrollSnap = await getDoc(
                 doc(db, "enrollments", `${user.uid}_${courseDoc.id}`)
               )
@@ -182,12 +222,12 @@ export default function RecordingsPage({
               }
             }
 
-            // Admin bypasses enrollment check — sees all courses
             const data = courseDoc.data()
             return {
               id: courseDoc.id,
               title: data.title,
-              recordings: data.recordings ?? [],
+              // ✅ pass recordings[] as-is — extractRecordings handles both formats
+              recordings: (data.recordings ?? []) as AdminRecording[],
               modules: (data.modules ?? []).map((m: any) => ({
                 ...m,
                 lessons: m.lessons ?? [],
@@ -196,12 +236,11 @@ export default function RecordingsPage({
           })
         )
 
-        // Filter out nulls (not enrolled)
         const enrolledCourses = enrollmentChecks.filter(
           (c): c is Course => c !== null
         )
 
-        // Only keep courses that have recordings or lesson videos
+        // Only keep courses that have at least one playable recording
         const withRecordings = enrolledCourses.filter(
           (c) => extractRecordings(c).length > 0
         )
@@ -234,9 +273,7 @@ export default function RecordingsPage({
     return (
       <div className="w-full space-y-6">
         <div>
-          <p className="text-xs uppercase tracking-wide text-mutedForeground">
-            Recordings
-          </p>
+          <p className="text-xs uppercase tracking-wide text-mutedForeground">Recordings</p>
           <h1 className="mt-2 text-lg font-semibold">Recordings</h1>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -259,28 +296,22 @@ export default function RecordingsPage({
     return (
       <div className="w-full space-y-6">
         <div>
-          <p className="text-xs uppercase tracking-wide text-mutedForeground">
-            Recordings
-          </p>
+          <p className="text-xs uppercase tracking-wide text-mutedForeground">Recordings</p>
           <h1 className="mt-2 text-lg font-semibold">Recordings</h1>
         </div>
         <Card className="border-red-200/70 bg-red-50/60">
-          <CardContent className="py-4 text-sm text-red-700">
-            {pageError}
-          </CardContent>
+          <CardContent className="py-4 text-sm text-red-700">{pageError}</CardContent>
         </Card>
       </div>
     )
   }
 
-  // ── not enrolled / empty state ────────────────────────────────────────────
+  // ── empty state ───────────────────────────────────────────────────────────
   if (courses.length === 0) {
     return (
       <div className="w-full space-y-6">
         <div>
-          <p className="text-xs uppercase tracking-wide text-mutedForeground">
-            Recordings
-          </p>
+          <p className="text-xs uppercase tracking-wide text-mutedForeground">Recordings</p>
           <h1 className="mt-2 text-lg font-semibold">Recordings</h1>
         </div>
         <Card className="border-border/70">
@@ -290,10 +321,7 @@ export default function RecordingsPage({
             <p className="text-sm text-mutedForeground mt-1">
               You need to be enrolled in a course to access its recordings.
             </p>
-            <Button
-              className="mt-4"
-              onClick={() => router.push(`/${locale}`)}
-            >
+            <Button className="mt-4" onClick={() => router.push(`/${locale}`)}>
               Browse Courses
             </Button>
           </CardContent>
@@ -308,9 +336,7 @@ export default function RecordingsPage({
 
       {/* ── Page Header ── */}
       <div>
-        <p className="text-xs uppercase tracking-wide text-mutedForeground">
-          Recordings
-        </p>
+        <p className="text-xs uppercase tracking-wide text-mutedForeground">Recordings</p>
         <h1 className="mt-2 text-lg font-semibold">
           {selectedCourse?.title ?? "Recordings"}
         </h1>
@@ -319,7 +345,7 @@ export default function RecordingsPage({
         </p>
       </div>
 
-      {/* ── Course Tabs ── */}
+      {/* ── Course Tabs (only shown when enrolled in multiple courses) ── */}
       {courses.length > 1 && (
         <div className="flex flex-wrap gap-2">
           {courses.map((course) => (
@@ -358,22 +384,33 @@ export default function RecordingsPage({
               className="group border-border bg-card transition-all hover:border-palm/40 hover:shadow-md"
             >
               <CardHeader className="pb-2">
+                {/* Module / session label */}
                 <CardDescription className="text-xs uppercase tracking-wide text-mutedForeground">
-                  {recording.moduleName
-                    ? `📂 ${recording.moduleName}`
-                    : `Recording ${index + 1}`}
+                  {recording.moduleName ? ` ${recording.moduleName}` : `Recording ${index + 1}`}
                 </CardDescription>
+
                 <CardTitle className="mt-1 text-base font-semibold line-clamp-2">
                   {recording.title}
                 </CardTitle>
-                {recording.duration ? (
-                  <p className="text-xs text-mutedForeground">
-                    ⏱ {recording.duration} min
+
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {recording.date && (
+                    <span className="text-xs text-mutedForeground">📅 {recording.date}</span>
+                  )}
+                  {recording.duration ? (
+                    <span className="text-xs text-mutedForeground">⏱ {recording.duration} min</span>
+                  ) : null}
+                </div>
+
+                {recording.description && (
+                  <p className="text-xs text-mutedForeground mt-1 line-clamp-2">
+                    {recording.description}
                   </p>
-                ) : null}
+                )}
               </CardHeader>
 
               <CardContent className="space-y-3">
+                {/* Thumbnail / preview */}
                 <div
                   className="relative aspect-video w-full overflow-hidden rounded-lg border border-border/60 bg-muted cursor-pointer"
                   onClick={() => handleWatch(recording)}
@@ -384,16 +421,17 @@ export default function RecordingsPage({
                         src={recording.driveEmbedUrl}
                         className="pointer-events-none h-full w-full scale-110 blur-[1px]"
                         title={recording.title}
+                        allow="autoplay"
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity group-hover:bg-black/40">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-lg transition-transform group-hover:scale-110">
+                        {/* <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-lg transition-transform group-hover:scale-110">
                           <span className="ml-1 text-xl">▶️</span>
-                        </div>
+                        </div> */}
                       </div>
                     </>
                   ) : (
                     <div className="flex h-full items-center justify-center">
-                      <span className="text-3xl">🎬</span>
+                      {/* <span className="text-3xl"></span> */}
                     </div>
                   )}
                 </div>

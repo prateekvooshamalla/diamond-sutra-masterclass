@@ -12,45 +12,49 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-
-const settingsLinks = [
-  { href: "course", title: "Course", description: "Core program settings." },
-  { href: "access", title: "Access", description: "Admin roles and permissions." },
-  { href: "audit", title: "Audit", description: "Recent admin activity." },
-]
+import { PageHeader } from "@/components/admin/PageHeader"
 
 export default function AdminSettingsHome({
   params,
 }: {
   params: Promise<{ locale: Locale }>
 }) {
-  const { locale } = use(params) // ✅ Next 16 safe
-
+  const { locale } = use(params)
   const { loading, isAdmin } = useAdminGuard(locale)
+
+  const settingsLinks = [
+    { href: `/${locale}/admin/course`, title: "Course", description: "Core program settings." },
+    { href: `/${locale}/admin/settings/access`, title: "Access", description: "Admin roles and permissions." },
+    { href: `/${locale}/admin/settings/audit`, title: "Audit", description: "Recent admin activity." },
+    { href: `/${locale}/admin/settings/profile`, title: "Profile", description: "Your admin account details." },
+  ]
 
   if (loading) return null
   if (!isAdmin) return null
 
   return (
-    <div className="grid gap-6 md:grid-cols-3">
-      {settingsLinks.map((item) => (
-        <Link
-          key={item.href}
-          href={`/${locale}/admin/settings/${item.href}`}
-        >
-          <Card className="h-full border-border/70 transition hover:border-palm/30">
-            <CardHeader>
-              <CardTitle>{item.title}</CardTitle>
-              <CardDescription>{item.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <span className="text-xs font-medium text-palm">
-                Open
-              </span>
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
-    </div>
+    <main className="space-y-6">
+      <PageHeader
+        label="Admin"
+        title="Settings"
+        description="Manage your course, access controls, audit logs, and profile."
+      />
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {settingsLinks.map((item) => (
+          <Link key={item.href} href={item.href}>
+            <Card className="h-full border-border/70 transition hover:border-palm/30">
+              <CardHeader>
+                <CardTitle>{item.title}</CardTitle>
+                <CardDescription>{item.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <span className="text-xs font-medium text-palm">Open</span>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </main>
   )
 }

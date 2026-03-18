@@ -21,8 +21,7 @@ import { useUser } from "@/components/site/useUser"
 function getInitials(name?: string | null) {
   if (!name) return "U"
   const parts = name.trim().split(/\s+/)
-  const initials = parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")
-  return initials || "U"
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "U"
 }
 
 export function LmsHeader({ locale }: { locale: string }) {
@@ -57,6 +56,7 @@ export function LmsHeader({ locale }: { locale: string }) {
           <span className="text-xs text-mutedForeground">Search</span>
           <Separator className="h-4 w-px" />
           <Input
+            suppressHydrationWarning
             className="h-7 border-none bg-transparent p-0 text-sm focus-visible:ring-0"
             placeholder="Search courses and lessons"
           />
@@ -64,6 +64,22 @@ export function LmsHeader({ locale }: { locale: string }) {
 
         <div className="flex items-center gap-3">
           <LanguageSwitcher locale={locale} />
+
+          {/* ── Bell icon ── */}
+          <button
+            onClick={() => router.push(`/${locale}/dashboard/settings/notifications`)}
+            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-mutedForeground transition hover:bg-[var(--muted)] hover:text-[var(--text-primary)]"
+            aria-label="Notifications"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+          </button>
+
+          {/* ── Avatar dropdown ── */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-10 w-10 rounded-full p-0">

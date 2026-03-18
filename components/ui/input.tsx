@@ -5,6 +5,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
   ({ className, ...props }, ref) => (
     <input
       ref={ref}
+      suppressHydrationWarning
       className={cn(
         "flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm placeholder:text-mutedForeground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palm/40",
         className

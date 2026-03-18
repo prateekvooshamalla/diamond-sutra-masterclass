@@ -1,0 +1,284 @@
+"use client"
+
+import * as React from "react"
+import { use } from "react"
+import type { Locale } from "@/Services/i18n"
+import { useRouter } from "next/navigation"
+import { useAdminGuard } from "@/components/site/useAdminGuard"
+import { db } from "@/Services/firebase"
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PageHeader } from "@/components/admin/PageHeader"
+
+type ProfileData = {
+  name?: string
+  phone?: string
+  email?: string
+  preferredLanguage?: Locale
+  timezone?: string
+  photoUrl?: string
+  role?: "admin" | "user"
+  createdAt?: any
+}
+
+const languageOptions: { value: Locale; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "hi", label: "Hindi" },
+  { value: "ml", label: "Malayalam" },
+  { value: "kn", label: "Kannada" },
+  { value: "zh", label: "Chinese" },
+]
+
+const timezoneOptions = [
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Europe/London",
+  "America/New_York",
+]
+
+function getInitials(name?: string | null) {
+  if (!name) return "U"
+  const parts = name.trim().split(/\s+/)
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "U"
+}
+
+function formatTimestamp(value: any) {
+  if (!value) return "-"
+  const date = value.toDate ? value.toDate() : new Date(value)
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date)
+}
+
+export default function AdminProfileSettings({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}) {
+  const { locale } = use(params)
+  const { loading, isAdmin, user, profile } = useAdminGuard(locale)
+  const router = useRouter()
+
+  const [name, setName] = React.useState("")
+  const [phone, setPhone] = React.useState("")
+  const [email, setEmail] = React.useState("")
+  const [preferredLanguage, setPreferredLanguage] = React.useState<Locale>(locale)
+  const [timezone, setTimezone] = React.useState("Asia/Kolkata")
+  const [photoUrl, setPhotoUrl] = React.useState("")
+  const [role, setRole] = React.useState<"admin" | "user">("user")
+  const [createdAt, setCreatedAt] = React.useState<any>(null)
+  const [saving, setSaving] = React.useState(false)
+  const [message, setMessage] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    async function loadProfile() {
+      if (!user) return
+      const snap = await getDoc(doc(db, "users", user.uid))
+      const data = (snap.exists() ? snap.data() : {}) as ProfileData
+
+      setName(data.name ?? profile?.name ?? "")
+      setPhone(data.phone ?? "")
+      setEmail(user.email ?? data.email ?? "")
+      setPreferredLanguage(data.preferredLanguage ?? locale)
+      setTimezone(data.timezone ?? "Asia/Kolkata")
+      setPhotoUrl(data.photoUrl ?? "")
+      setRole((data.role as "admin" | "user") ?? "user")
+      setCreatedAt(data.createdAt ?? null)
+    }
+    loadProfile()
+  }, [user, profile?.name, locale])
+
+  async function saveProfile() {
+    if (!user) return
+    setError(null)
+    setSaving(true)
+    setMessage(null)
+
+    const trimmedName = name.trim()
+    const trimmedPhone = phone.trim()
+
+    if (!trimmedName) {
+      setSaving(false)
+      setError("Name is required.")
+      return
+    }
+
+    try {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          name: trimmedName,
+          phone: trimmedPhone,
+          email,
+          preferredLanguage,
+          timezone,
+          photoUrl,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+
+      setMessage("Profile updated.")
+
+      // If language changed, redirect to the same page in the new locale
+      if (preferredLanguage !== locale) {
+        router.push(`/${preferredLanguage}/admin/settings/profile`)
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Update failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+  if (!isAdmin) return null
+
+  const initials = getInitials(name || profile?.name)
+
+  return (
+    <main className="space-y-6">
+      <div>
+        <button
+          onClick={() => router.push(`/${locale}/admin/settings`)}
+          className="text-sm text-mutedForeground hover:text-foreground flex items-center gap-1.5 mb-4 transition-colors"
+        >
+          ← Back to settings
+        </button>
+        <PageHeader
+          label="Admin › Settings"
+          title="Profile"
+          description="Update your contact details and localization preferences."
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
+        {/* ── Edit form ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile details</CardTitle>
+            <CardDescription>
+              Update your contact and localization preferences.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Avatar row */}
+            <div className="flex items-center gap-4">
+              <Avatar className="h-14 w-14">
+                {photoUrl ? <AvatarImage src={photoUrl} alt={name} /> : null}
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-medium">Profile photo</p>
+                <p className="text-xs text-mutedForeground">
+                  Paste a URL below or leave blank for initials.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Full name *</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Email</Label>
+                <Input value={email} disabled className="opacity-60" />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Preferred language</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+                  value={preferredLanguage}
+                  onChange={(e) => setPreferredLanguage(e.target.value as Locale)}
+                >
+                  {languageOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Timezone</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                >
+                  {timezoneOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Photo URL (optional)</Label>
+                <Input
+                  value={photoUrl}
+                  placeholder="https://example.com/photo.jpg"
+                  onChange={(e) => setPhotoUrl(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button onClick={saveProfile} disabled={saving}>
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+              {message && <p className="text-sm text-emerald-700">{message}</p>}
+              {error && <p className="text-sm text-red-600">{error}</p>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Account summary ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Account summary</CardTitle>
+            <CardDescription>Security and access snapshot.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-mutedForeground">
+            <div className="flex justify-between">
+              <span>Name</span>
+              <span className="font-medium text-foreground">
+                {name || profile?.name || user?.displayName || "—"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Email</span>
+              <span className="font-medium text-foreground">
+                {email || user?.email || "—"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Role</span>
+              <span className="font-medium text-foreground capitalize">{role}</span>
+            </div>
+            {createdAt && (
+              <div className="flex justify-between">
+                <span>Member since</span>
+                <span className="font-medium text-foreground">
+                  {formatTimestamp(createdAt)}
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </main>
+  )
+}

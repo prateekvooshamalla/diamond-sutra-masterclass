@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { signOut } from "firebase/auth"
 import { auth } from "@/Services/firebase"
 import { LanguageSwitcher } from "@/components/site/LanguageSwitcher"
@@ -27,8 +27,13 @@ function getInitials(name?: string | null) {
 
 export function AppTopbar({ locale }: { locale: string }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { profile } = useUser()
   const initials = getInitials(profile?.name)
+
+  // Detect if we're in the admin section
+  const isAdmin = pathname.includes(`/${locale}/admin`)
+  const basePath = isAdmin ? `/${locale}/admin` : `/${locale}/dashboard`
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--card)]">
@@ -73,10 +78,10 @@ export function AppTopbar({ locale }: { locale: string }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => router.push(`/${locale}/app/settings/profile`)}>
+              <DropdownMenuItem onClick={() => router.push(`${basePath}/settings/profile`)}>
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(`/${locale}/app/settings`)}>
+              <DropdownMenuItem onClick={() => router.push(`${basePath}/settings`)}>
                 Settings
               </DropdownMenuItem>
               <DropdownMenuItem

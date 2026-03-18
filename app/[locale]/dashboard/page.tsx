@@ -1,160 +1,3 @@
-// "use client"
-
-// import * as React from "react"
-// import type { Locale } from "@/Services/i18n"
-// import { useRouter } from "next/navigation"
-// import { useUser } from "@/components/site/useUser"
-// import { db } from "@/Services/firebase"
-// import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore"
-// import { Button } from "@/components/ui/button"
-// import { Badge } from "@/components/ui/badge"
-// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-
-// type Course = {
-//   title: string
-//   zoomLink?: string
-//   recordings?: { title: string; driveEmbedUrl: string }[]
-//   modules?: { title: string; items: string[] }[]
-//   schedule?: string
-//   instructorName?: string
-// }
-
-// type EnrollmentStatus = "not_enrolled" | "active"
-
-// export default function Dashboard({
-//   params,
-// }: {
-//   params: Promise<{ locale: Locale }>
-// }) {
-//   const { locale } = React.use(params)
-
-//   const router = useRouter()
-//   const { user, profile, loading } = useUser()
-
-//   const [status, setStatus] = React.useState<EnrollmentStatus>("not_enrolled")
-//   const [course, setCourse] = React.useState<Course | null>(null)
-
-//   React.useEffect(() => {
-//     if (!loading && !user) router.push(`/${locale}`)
-//   }, [loading, user])
-
-//   React.useEffect(() => {
-//     async function load() {
-//       if (!user) return
-
-//       const enrollmentSnap = await getDoc(
-//         doc(db, "enrollments", `${user.uid}_diamond-sutra`)
-//       )
-
-//       setStatus(
-//         enrollmentSnap.exists()
-//           ? enrollmentSnap.data().status ?? "not_enrolled"
-//           : "not_enrolled"
-//       )
-
-//       const courseSnap = await getDoc(doc(db, "courses", "diamond-sutra"))
-//       if (courseSnap.exists()) setCourse(courseSnap.data() as Course)
-//     }
-
-//     load()
-//   }, [user])
-
-//   async function handleCheckIn() {
-//     if (!user) return
-
-//     await setDoc(
-//       // doc(db, "enrollments", `diamond-sutra_${user.uid}`),
-//       doc(db, "enrollments", `${user.uid}_diamond-sutra`),
-//       {
-//         uid: user.uid,
-//         courseId: "diamond-sutra",
-//         status: "active",
-//         updatedAt: serverTimestamp(),
-//       },
-//       { merge: true }
-//     )
-
-//     setStatus("active")
-//   }
-
-//   if (!course) return <div className="p-6">Loading...</div>
-
-//   return (
-//     <div className="p-6 space-y-6">
-//       <h1 className="text-lg font-semibold">
-//         Welcome, {profile?.name ?? "Student"}
-//       </h1>
-
-//       <Card>
-//         <CardHeader>
-//           <CardTitle>{course.title}</CardTitle>
-//           <Badge className="w-fit mt-2">
-//             {status === "active" ? "Active" : "Not Enrolled"}
-//           </Badge>
-//         </CardHeader>
-//         <CardContent className="space-y-3">
-//           <p><strong>Schedule:</strong> {course.schedule}</p>
-//           <p><strong>Instructor:</strong> {course.instructorName}</p>
-
-//           <div className="flex gap-3">
-//             {status === "active" ? (
-//               <Button onClick={() => window.open(course.zoomLink, "_blank")}>
-//                 Join Zoom
-//               </Button>
-//             ) : (
-//               <Button onClick={handleCheckIn}>
-//                 Check-in to Join Batch
-//               </Button>
-//             )}
-//           </div>
-//         </CardContent>
-//       </Card>
-
-//       {/* Modules */}
-//       {course.modules?.length ? (
-//         <Card>
-//           <CardHeader>
-//             <CardTitle>Modules</CardTitle>
-//           </CardHeader>
-//           <CardContent>
-//             {course.modules.map((m, i) => (
-//               <div key={i} className="mb-4">
-//                 <h3 className="font-semibold">{m.title}</h3>
-//                 <ul className="list-disc ml-6">
-//                   {m.items.map((item, idx) => (
-//                     <li key={idx}>{item}</li>
-//                   ))}
-//                 </ul>
-//               </div>
-//             ))}
-//           </CardContent>
-//         </Card>
-//       ) : null}
-
-//       {/* Recordings */}
-//       {course.recordings?.length ? (
-//         <Card>
-//           <CardHeader>
-//             <CardTitle>Recordings</CardTitle>
-//           </CardHeader>
-//           <CardContent>
-//             {course.recordings.map((rec, i) => (
-//               <div key={i} className="mb-6">
-//                 <h4 className="font-medium">{rec.title}</h4>
-//                 <iframe
-//                   src={rec.driveEmbedUrl}
-//                   className="w-full h-64 rounded-lg mt-2"
-//                   allow="autoplay"
-//                 />
-//               </div>
-//             ))}
-//           </CardContent>
-//         </Card>
-//       ) : null}
-//     </div>
-//   )
-// }
-
 "use client"
 
 import * as React from "react"
@@ -163,41 +6,47 @@ import type { Locale } from "@/Services/i18n"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/components/site/useUser"
 import { db } from "@/Services/firebase"
-import { doc, getDoc } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type Lesson = {
+type EnrolledCourse = {
   id: string
-  order: number
-  title: string
-  duration?: number
-}
-
-type Module = {
-  id: string
-  order: number
-  title: string
-  lessons?: Lesson[]   // new structure
-  items?: string[]     // legacy structure — kept for safety
-}
-
-type Course = {
   title: string
   zoomLink?: string
   schedule?: string
   instructorName?: string
-  modules?: Module[]
+  nextSessionAt?: string  // ISO datetime e.g. "2026-03-25T06:00:00"
+  modules?: any[]
+  enrollStatus: "active" | "pending_payment" | "not_enrolled"
 }
 
-type EnrollmentStatus = "not_enrolled" | "pending_payment" | "active"
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
-// ─── component ────────────────────────────────────────────────────────────────
+function formatDate(iso: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  }).format(new Date(iso))
+}
 
-export default function Dashboard({
+function formatTime(iso: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  }).format(new Date(iso))
+}
+
+function isLive(iso: string): boolean {
+  const t = new Date(iso).getTime()
+  const now = Date.now()
+  return now >= t - 10 * 60 * 1000 && now <= t + 3 * 60 * 60 * 1000
+}
+
+// ─── main page ────────────────────────────────────────────────────────────────
+
+export default function MyLearningDashboard({
   params,
 }: {
   params: Promise<{ locale: Locale }>
@@ -206,9 +55,15 @@ export default function Dashboard({
   const router = useRouter()
   const { user, profile, loading } = useUser()
 
-  const [status, setStatus] = React.useState<EnrollmentStatus>("not_enrolled")
-  const [course, setCourse] = React.useState<Course | null>(null)
+  const [courses, setCourses] = React.useState<EnrolledCourse[]>([])
   const [pageLoading, setPageLoading] = React.useState(true)
+  const [tick, setTick] = React.useState(0)
+
+  // tick every 30s to re-evaluate live status
+  React.useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [])
 
   React.useEffect(() => {
     if (!loading && !user) router.push(`/${locale}`)
@@ -217,152 +72,227 @@ export default function Dashboard({
   React.useEffect(() => {
     async function load() {
       if (!user) return
-
+      setPageLoading(true)
       try {
-        const enrollmentSnap = await getDoc(
-          doc(db, "enrollments", `${user.uid}_diamond-sutra`)
+        const snap = await getDocs(collection(db, "courses"))
+        const results: EnrolledCourse[] = []
+
+        await Promise.all(
+          snap.docs.map(async (courseDoc) => {
+            const enrollSnap = await getDoc(
+              doc(db, "enrollments", `${user.uid}_${courseDoc.id}`)
+            )
+            if (!enrollSnap.exists()) return
+            const status = enrollSnap.data().status ?? "not_enrolled"
+            if (status === "not_enrolled") return
+
+            const d = courseDoc.data()
+            results.push({
+              id: courseDoc.id,
+              title: d.title ?? "Untitled",
+              zoomLink: d.zoomLink,
+              schedule: d.schedule,
+              instructorName: d.instructorName,
+              nextSessionAt: d.nextSessionAt ?? null,
+              modules: d.modules ?? [],
+              enrollStatus: status,
+            })
+          })
         )
 
-        setStatus(
-          enrollmentSnap.exists()
-            ? (enrollmentSnap.data().status as EnrollmentStatus) ?? "not_enrolled"
-            : "not_enrolled"
-        )
-
-        const courseSnap = await getDoc(doc(db, "courses", "diamond-sutra"))
-        if (courseSnap.exists()) setCourse(courseSnap.data() as Course)
+        setCourses(results)
+      } catch (e) {
+        console.error(e)
       } finally {
         setPageLoading(false)
       }
     }
-
     load()
   }, [user])
 
   if (loading || pageLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    return (
+      <div className="space-y-4">
+        <div className="h-6 w-40 bg-muted rounded animate-pulse" />
+        <div className="h-36 bg-muted rounded-xl animate-pulse" />
+        <div className="h-24 bg-muted rounded-xl animate-pulse" />
+      </div>
+    )
   }
-
-  if (!course) {
-    return <div className="p-6 text-sm text-muted-foreground">Course not found.</div>
-  }
-
-  const isEnrolled = status === "active" || status === "pending_payment"
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-lg font-semibold">
-        Welcome, {profile?.name ?? "Student"}
-      </h1>
+    <div className="space-y-8">
 
-      {/* ── Enrollment status card ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{course.title}</CardTitle>
-          <Badge
-            className={`w-fit mt-2 ${
-              status === "active"
-                ? "bg-green-100 text-green-700"
-                : status === "pending_payment"
-                ? "bg-amber-100 text-amber-700"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {status === "active"
-              ? "Active"
-              : status === "pending_payment"
-              ? "Pending Payment"
-              : "Not Enrolled"}
-          </Badge>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {course.schedule && (
-            <p className="text-sm">
-              <strong>Schedule:</strong> {course.schedule}
-            </p>
-          )}
-          {course.instructorName && (
-            <p className="text-sm">
-              <strong>Instructor:</strong> {course.instructorName}
-            </p>
-          )}
+      {/* ── Welcome ── */}
+      <div>
+        <p className="text-xs uppercase tracking-wide text-mutedForeground">My Learning</p>
+        <h1 className="mt-1 text-xl font-semibold">
+          Welcome back, {profile?.name?.split(" ")[0] ?? "Student"} 👋
+        </h1>
+      </div>
 
-          {/* ── Action area based on status ── */}
-          <div className="mt-2">
-            {status === "active" && course.zoomLink ? (
-              <Button onClick={() => window.open(course.zoomLink, "_blank")}>
-                Join Zoom
+      {/* ── Upcoming Sessions ── */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-foreground">Upcoming Sessions</h2>
+
+        {courses.length === 0 ? (
+          <Card className="border-border/50">
+            <CardContent className="py-12 text-center space-y-3">
+              <p className="text-3xl">📚</p>
+              <p className="font-medium text-sm">No courses enrolled yet</p>
+              <p className="text-xs text-mutedForeground">
+                Enroll in a course to see your upcoming sessions here.
+              </p>
+              <Button variant="secondary" size="sm" onClick={() => router.push(`/${locale}`)}>
+                Browse Courses
               </Button>
-            ) : status === "pending_payment" ? (
-              <div className="rounded-lg border border-amber-200/70 bg-amber-50/60 px-4 py-3">
-                <p className="text-sm font-medium text-amber-700">
-                  Payment under review
-                </p>
-                <p className="text-xs text-amber-600 mt-0.5">
-                  Your enrollment is being verified. You'll get access once confirmed.
-                </p>
-              </div>
-            ) : (
-              <Button onClick={() => router.push(`/${locale}`)}>
-                Enroll Now
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          courses.map((course) => {
+            const hasSession = Boolean(course.nextSessionAt)
+            const live = hasSession ? isLive(course.nextSessionAt!) : false
+            const isActive = course.enrollStatus === "active"
+            const isPending = course.enrollStatus === "pending_payment"
+            const canJoin = live && isActive && Boolean(course.zoomLink)
 
-      {/* ── Modules — only show if enrolled ── */}
-      {isEnrolled && course.modules?.length ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Modules</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {course.modules
-              .sort((a, b) => a.order - b.order)
-              .map((m, i) => (
-                <div key={m.id ?? i}>
-                  <h3 className="font-semibold text-sm">{m.title}</h3>
+            return (
+              <Card key={course.id} className="border-border/70">
+                <CardContent className="p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 
-                  {/* New structure: lessons array */}
-                  {m.lessons?.length ? (
-                    <ul className="mt-1 space-y-1">
-                      {m.lessons
-                        .sort((a, b) => a.order - b.order)
-                        .map((lesson) => (
-                          <li
-                            key={lesson.id}
-                            className="flex items-center gap-2 text-sm text-muted-foreground pl-3"
-                          >
-                            <span className="text-xs">▶️</span>
-                            {lesson.title}
-                            {lesson.duration ? (
-                              <span className="text-xs text-muted-foreground/60">
-                                · {lesson.duration} min
-                              </span>
-                            ) : null}
-                          </li>
-                        ))}
-                    </ul>
-                  ) : m.items?.length ? (
-                    /* Legacy structure: items array */
-                    <ul className="list-disc ml-6 mt-1">
-                      {m.items.map((item, idx) => (
-                        <li key={idx} className="text-sm text-muted-foreground">
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-muted-foreground pl-3 mt-1">
-                      No lessons yet.
-                    </p>
-                  )}
+                    {/* ── Left: info ── */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-base truncate">{course.title}</p>
+                        {isPending && (
+                          <Badge className="bg-amber-100 text-amber-700 text-xs border-0">
+                            Pending Payment
+                          </Badge>
+                        )}
+                        {isActive && (
+                          <Badge className="bg-green-100 text-green-700 text-xs border-0">
+                            Active
+                          </Badge>
+                        )}
+                      </div>
+
+                      {course.instructorName && (
+                        <p className="text-xs text-mutedForeground">
+                          Instructor: {course.instructorName}
+                        </p>
+                      )}
+
+                      {/* Session timing box */}
+                      {hasSession ? (
+                        <div className="mt-1 rounded-lg border border-border/60 bg-muted/40 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-mutedForeground mb-1">
+                            {live ? "🔴 Live right now" : "⏰ Next session"}
+                          </p>
+                          <p className="text-sm font-medium text-foreground">
+                            {formatDate(course.nextSessionAt!)}
+                          </p>
+                          <p className="text-xs text-mutedForeground mt-0.5">
+                            {formatTime(course.nextSessionAt!)}
+                            {course.schedule ? `  ·  ${course.schedule}` : ""}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-mutedForeground italic">
+                          No session scheduled yet.
+                          {course.schedule ? `  Schedule: ${course.schedule}` : ""}
+                        </p>
+                      )}
+
+                      {isPending && (
+                        <p className="text-xs text-amber-600">
+                          ⚠️ Your payment is under review. You'll get access once confirmed.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* ── Right: Join button ── */}
+                    <div className="flex-shrink-0 flex flex-col items-start sm:items-end gap-1.5">
+                      <button
+                        disabled={!canJoin}
+                        onClick={() => canJoin && window.open(course.zoomLink, "_blank")}
+                        className={[
+                          "px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 min-w-[110px] text-center",
+                          canJoin
+                            ? "bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white shadow-md shadow-orange-200 cursor-pointer"
+                            : "bg-muted text-mutedForeground cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        {live ? "🔴 Join Now" : "Join Now"}
+                      </button>
+
+                      {hasSession && !live && (
+                        <p className="text-[11px] text-mutedForeground text-right max-w-[130px] leading-tight">
+                          Activates 10 min before class
+                        </p>
+                      )}
+                    </div>
+
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
+        )}
+      </section>
+
+      {/* ── My Courses ── */}
+      {courses.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-foreground">My Courses</h2>
+          <div className="space-y-2">
+            {courses.map((course) => {
+              const totalLessons = course.modules?.reduce(
+                (acc: number, m: any) => acc + (m.lessons?.length ?? 0), 0
+              ) ?? 0
+
+              return (
+                <div
+                  key={course.id}
+                  className="flex items-center gap-4 rounded-xl border border-border/60 bg-card px-4 py-3 hover:bg-muted/20 transition-colors"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-lg">
+                    🎓
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{course.title}</p>
+                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                      {course.instructorName && (
+                        <span className="text-xs text-mutedForeground">
+                          by {course.instructorName}
+                        </span>
+                      )}
+                      {totalLessons > 0 && (
+                        <span className="text-xs text-mutedForeground">
+                          · {totalLessons} lessons
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex items-center gap-2">
+                    <Badge className="bg-green-100 text-green-700 text-xs border-0">
+                      Enrolled
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => router.push(`/${locale}/dashboard/course`)}
+                    >
+                      Continue →
+                    </Button>
+                  </div>
                 </div>
-              ))}
-          </CardContent>
-        </Card>
-      ) : null}
+              )
+            })}
+          </div>
+        </section>
+      )}
+
     </div>
   )
 }

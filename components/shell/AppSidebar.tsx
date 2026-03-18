@@ -26,11 +26,22 @@ export function AppSidebar({ locale }: { locale: string }) {
   const userBase = `/${locale}/app`
   const adminBase = `/${locale}/admin`
 
+  // function isActive(href: string, base: string) {
+  //   const full = href ? `${base}/${href}` : base
+  //   return pathname === full || pathname.startsWith(`${full}/`)
+  // }
+
   function isActive(href: string, base: string) {
-    const full = href ? `${base}/${href}` : base
-    return pathname === full || pathname.startsWith(`${full}/`)
+  const full = href ? `${base}/${href}` : base
+
+  // ✅ Fix: Admin Home should match EXACT only
+  if (!href) {
+    return pathname === base
   }
 
+  // ✅ Other routes (course, users, etc.)
+  return pathname === full || pathname.startsWith(`${full}/`)
+}
   function navItem(item: { label: string; href: string; icon: React.ElementType }, base: string) {
     const href = item.href ? `${base}/${item.href}` : base
     const active = isActive(item.href, base)
