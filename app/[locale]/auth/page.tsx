@@ -23,6 +23,7 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore"
+import { getFunctions, httpsCallable } from "firebase/functions"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -91,7 +92,7 @@ export default function AuthPage({
     return () => unsub()
   }, [locale, router])
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  // ── helpers ───────────────────────────────────────────────────────────────
 
   async function ensureUserDoc(input: UserProfileInput) {
     const ref = doc(db, "users", input.uid)
@@ -121,7 +122,6 @@ export default function AuthPage({
     )
   }
 
-  // ── Creates a pending_payment enrollment for every course ─────────────────
   async function createEnrollments(uid: string) {
     try {
       const snap = await getDocs(collection(db, "courses"))
@@ -132,16 +132,28 @@ export default function AuthPage({
             {
               uid,
               courseId: courseDoc.id,
-              status: "pending_payment",  // ← NOT "not_enrolled"
+              status: "pending_payment",
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             },
-            { merge: true }  // safe to call again — won't overwrite active status
+            { merge: true }
           )
         )
       )
     } catch (_) {
-      // non-fatal — enrollment can be created manually by admin
+      // non-fatal
+    }
+  }
+
+  // ── Welcome email via SES ─────────────────────────────────────────────────
+  async function sendWelcomeEmailToUser(userEmail: string, userName: string) {
+    try {
+      const functions = getFunctions(undefined, "us-central1")
+      const sendWelcome = httpsCallable(functions, "sendWelcomeEmail")
+      await sendWelcome({ email: userEmail, name: userName })
+    } catch (err) {
+      // Non-fatal — don't block registration if email fails
+      console.error("Welcome email failed:", err)
     }
   }
 
@@ -204,13 +216,16 @@ export default function AuthPage({
         phone: phone.trim(),
       })
 
-      // 3. Create pending_payment enrollment for all courses ← THIS WAS MISSING
+      // 3. Create pending_payment enrollment for all courses
       await createEnrollments(cred.user.uid)
 
-      // 4. Send verification email
+      // 4. Send Firebase verification email
       await sendEmailVerification(cred.user)
 
-      // 5. Switch to login tab and show success
+      // 5. Send welcome email via SES ✅
+      await sendWelcomeEmailToUser(normalizedEmail, name.trim())
+
+      // 6. Switch to login tab and show success
       setTab("login")
       setSuccessMsg(
         `Verification email sent to ${normalizedEmail}. Please verify your email then log in.`
@@ -268,7 +283,6 @@ export default function AuthPage({
       const provider = new GoogleAuthProvider()
       const cred = await signInWithPopup(auth, provider)
 
-      // Check if this is a brand new Google user
       const isNewUser =
         cred.user.metadata.creationTime === cred.user.metadata.lastSignInTime
 
@@ -278,9 +292,13 @@ export default function AuthPage({
         email: cred.user.email ?? "",
       })
 
-      // Only create enrollments for new Google signups
       if (isNewUser) {
         await createEnrollments(cred.user.uid)
+        // Send welcome email for new Google users ✅
+        await sendWelcomeEmailToUser(
+          cred.user.email ?? "",
+          cred.user.displayName ?? "there"
+        )
       }
 
       router.replace(`/${locale}/dashboard`)
@@ -381,7 +399,6 @@ export default function AuthPage({
               </Button>
             </form>
           ) : (
-            /* Register Form */
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="register-name">{d.authName}</Label>
